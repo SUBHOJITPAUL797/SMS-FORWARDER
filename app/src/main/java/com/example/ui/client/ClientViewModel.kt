@@ -91,16 +91,24 @@ class ClientViewModel(
     }
 
     fun switchRole(onRoleReset: () -> Unit) {
-        viewModelScope.launch {
-            authRepository.resetRole()
-            onRoleReset()
+        onRoleReset()
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                authRepository.resetRole()
+            } catch (e: Exception) {
+                // Ignore
+            }
         }
     }
 
     fun logout(onLoggedOut: () -> Unit) {
-        viewModelScope.launch {
-            authRepository.logout()
-            onLoggedOut()
+        onLoggedOut()
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                authRepository.logout()
+            } catch (e: Exception) {
+                // Ignore
+            }
         }
     }
 }

@@ -2,7 +2,6 @@ package com.example.ui.roleselect
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -143,6 +142,7 @@ fun RoleSelectScreen(
                     subtitle = "Primary Device",
                     description = "This phone will receive real-time notifications and an instant feed of every SMS received on your Client phone.",
                     badge = "RECEIVER MODE",
+                    buttonText = "Set as HOST (Receiver)",
                     icon = Icons.Default.PhoneAndroid,
                     primaryColor = Color(0xFF6750A4),
                     containerColor = Color(0xFFEADDFF),
@@ -160,6 +160,7 @@ fun RoleSelectScreen(
                     subtitle = "Monitored Device",
                     description = "This phone runs a persistent background service to listen for incoming SMS and immediately sync them to your Host.",
                     badge = "SENDER MODE",
+                    buttonText = "Set as CLIENT (Sender)",
                     icon = Icons.Default.Sensors,
                     primaryColor = Color(0xFF00668B),
                     containerColor = Color(0xFFC2E7FF),
@@ -172,7 +173,7 @@ fun RoleSelectScreen(
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Text(
-                    text = "You can switch roles later from app settings.",
+                    text = "You can switch roles anytime from app top bar.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )
@@ -187,6 +188,7 @@ private fun RoleOptionCard(
     subtitle: String,
     description: String,
     badge: String,
+    buttonText: String,
     icon: ImageVector,
     primaryColor: Color,
     containerColor: Color,
@@ -194,22 +196,24 @@ private fun RoleOptionCard(
     onClick: () -> Unit
 ) {
     Card(
+        onClick = onClick,
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         ),
-        border = BorderStroke(1.dp, Color(0xFFCAC4D0)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.5.dp, containerColor),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 6.dp
+        ),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .clickable { onClick() }
             .testTag(testTag)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(22.dp)
+                .padding(20.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -274,24 +278,28 @@ private fun RoleOptionCard(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
+            Button(
+                onClick = onClick,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "Configure this device",
-                    color = primaryColor,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = primaryColor,
-                    modifier = Modifier.size(18.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = buttonText,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }

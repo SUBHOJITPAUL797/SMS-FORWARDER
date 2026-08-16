@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.repository.AuthRepository
 import com.example.domain.model.UserRole
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -17,20 +18,28 @@ class RoleSelectViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), authRepository.currentUser?.email)
 
     fun selectRole(role: UserRole, onComplete: () -> Unit) {
-        viewModelScope.launch {
-            // Save role locally immediately to prevent any UI freeze or network delay
-            authRepository.setUserRoleLocal(role)
-            // Trigger instant screen transition
-            onComplete()
-            // Sync user profile to Firestore in background
-            authRepository.syncUserProfile(role)
+        // Immediate, 0ms synchronous UI navigation
+        onComplete()
+
+        // Background persistence so no blocking or lagging occurs
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                authRepository.setUserRoleLocal(role)
+                authRepository.syncUserProfile(role)
+            } catch (e: Exception) {
+                // Ignore background sync errors
+            }
         }
     }
 
     fun logout(onLoggedOut: () -> Unit) {
-        viewModelScope.launch {
-            authRepository.logout()
-            onLoggedOut()
+        onLoggedOut()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                authRepository.logout()
+            } catch (e: Exception) {
+                // Ignore
+            }
         }
     }
 }
