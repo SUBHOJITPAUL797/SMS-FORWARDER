@@ -18,6 +18,12 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
 
     companion object {
         private const val TAG = "FirestoreSource"
+
+        // Dedicated, isolated collections for SMS Forwarder to ensure clean database organization
+        const val COLLECTION_USERS = "sms_forwarder_users"
+        const val COLLECTION_PAIRINGS = "sms_forwarder_pairings"
+        const val COLLECTION_LINKS = "sms_forwarder_links"
+        const val COLLECTION_SMS = "sms_forwarder_messages"
     }
 
     suspend fun saveUserProfile(
@@ -38,7 +44,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
             if (fcmToken.isNotEmpty()) userMap["fcmToken"] = fcmToken
             if (linkedUid != null) userMap["linkedUid"] = linkedUid
 
-            firestore.collection("users").document(uid)
+            firestore.collection(COLLECTION_USERS).document(uid)
                 .set(userMap, SetOptions.merge())
                 .await()
             Result.success(Unit)
@@ -50,7 +56,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
 
     suspend fun getUserProfile(uid: String): Result<Map<String, Any>?> {
         return try {
-            val doc = firestore.collection("users").document(uid).get().await()
+            val doc = firestore.collection(COLLECTION_USERS).document(uid).get().await()
             Result.success(doc.data)
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching user profile", e)
@@ -60,7 +66,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
 
     suspend fun updateFcmToken(uid: String, token: String): Result<Unit> {
         return try {
-            firestore.collection("users").document(uid)
+            firestore.collection(COLLECTION_USERS).document(uid)
                 .update("fcmToken", token)
                 .await()
             Result.success(Unit)
@@ -92,7 +98,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 "hostUid" to null
             )
 
-            firestore.collection("pairings").document(code)
+            firestore.collection(COLLECTION_PAIRINGS).document(code)
                 .set(pairingData)
                 .await()
             Result.success(Unit)
@@ -103,7 +109,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     }
 
     fun observePairingDoc(code: String): Flow<Map<String, Any>?> = callbackFlow {
-        val listener: ListenerRegistration = firestore.collection("pairings").document(code)
+        val listener: ListenerRegistration = firestore.collection(COLLECTION_PAIRINGS).document(code)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error observing pairing doc", error)
@@ -121,7 +127,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     ): Result<Pair<String, String>> {
         // Returns Pair(clientUid, clientDeviceName)
         return try {
-            val pairingRef = firestore.collection("pairings").document(code)
+            val pairingRef = firestore.collection(COLLECTION_PAIRINGS).document(code)
             val doc = pairingRef.get().await()
 
             if (!doc.exists()) {
@@ -154,12 +160,12 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 "pairedAt" to FieldValue.serverTimestamp(),
                 "active" to true
             )
-            firestore.collection("links").document(linkId)
+            firestore.collection(COLLECTION_LINKS).document(linkId)
                 .set(linkData, SetOptions.merge())
                 .await()
 
             // 3. Update host user doc with linked clientUid
-            firestore.collection("users").document(hostUid)
+            firestore.collection(COLLECTION_USERS).document(hostUid)
                 .update(
                     mapOf(
                         "role" to UserRole.HOST.key,
@@ -169,7 +175,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 ).await()
 
             // 4. Update client user doc with linked hostUid
-            firestore.collection("users").document(clientUid)
+            firestore.collection(COLLECTION_USERS).document(clientUid)
                 .update(
                     mapOf(
                         "role" to UserRole.CLIENT.key,
@@ -198,7 +204,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 "pairedAt" to FieldValue.serverTimestamp(),
                 "active" to true
             )
-            firestore.collection("links").document(linkId)
+            firestore.collection(COLLECTION_LINKS).document(linkId)
                 .set(linkData, SetOptions.merge())
                 .await()
             Result.success(Unit)
@@ -209,7 +215,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     }
 
     fun observeConnectedClients(hostCode: String): Flow<List<Map<String, Any>>> = callbackFlow {
-        val listener = firestore.collection("links")
+        val listener = firestore.collection(COLLECTION_LINKS)
             .whereEqualTo("hostUid", hostCode)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
@@ -224,7 +230,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
 
     suspend fun removePairingDoc(code: String) {
         try {
-            firestore.collection("pairings").document(code).delete().await()
+            firestore.collection(COLLECTION_PAIRINGS).document(code).delete().await()
         } catch (e: Exception) {
             Log.w(TAG, "Failed to clean up pairing code $code", e)
         }
@@ -234,7 +240,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
 
     suspend fun uploadSms(hostUid: String, message: SmsMessage): Result<Unit> {
         return try {
-            firestore.collection("sms")
+            firestore.collection(COLLECTION_SMS)
                 .document(hostUid)
                 .collection("messages")
                 .document(message.messageId)
@@ -248,7 +254,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     }
 
     fun observeSmsMessages(hostUid: String): Flow<List<SmsMessage>> = callbackFlow {
-        val listener = firestore.collection("sms")
+        val listener = firestore.collection(COLLECTION_SMS)
             .document(hostUid)
             .collection("messages")
             .addSnapshotListener { snapshot, error ->
@@ -266,7 +272,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
 
     suspend fun markSmsAsRead(hostUid: String, messageId: String): Result<Unit> {
         return try {
-            firestore.collection("sms")
+            firestore.collection(COLLECTION_SMS)
                 .document(hostUid)
                 .collection("messages")
                 .document(messageId)
@@ -280,7 +286,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
 
     suspend fun markAllSmsAsRead(hostUid: String): Result<Unit> {
         return try {
-            val unreadDocs = firestore.collection("sms")
+            val unreadDocs = firestore.collection(COLLECTION_SMS)
                 .document(hostUid)
                 .collection("messages")
                 .whereEqualTo("read", false)
