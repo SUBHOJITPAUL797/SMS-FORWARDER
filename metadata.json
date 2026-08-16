@@ -1,0 +1,6 @@
+{
+  "name": "SMS Bridge",
+  "description": "Real-time SMS Forwarder bridging messages between Client and Host devices via Firebase with offline queueing and background monitoring.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
