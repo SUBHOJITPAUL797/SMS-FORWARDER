@@ -48,6 +48,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -95,6 +96,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.ui.update.InAppUpdateDialog
+import com.example.util.UpdateChecker
+import kotlinx.coroutines.launch
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientHomeScreen(
@@ -103,6 +110,7 @@ fun ClientHomeScreen(
     onLoggedOut: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val totalCount by viewModel.totalCount.collectAsStateWithLifecycle()
     val uploadedCount by viewModel.uploadedCount.collectAsStateWithLifecycle()
     val pendingCount by viewModel.pendingCount.collectAsStateWithLifecycle()
@@ -110,6 +118,23 @@ fun ClientHomeScreen(
     val linkedHostUid by viewModel.linkedHostUid.collectAsStateWithLifecycle()
 
     var isServiceRunning by remember { mutableStateOf(true) }
+    var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+
+    // Automatic update check in background on launch
+    LaunchedEffect(Unit) {
+        val info = UpdateChecker.checkForUpdates(context)
+        if (info.hasUpdate) {
+            availableUpdate = info
+        }
+    }
+
+    if (availableUpdate != null) {
+        InAppUpdateDialog(
+            updateInfo = availableUpdate!!,
+            onDismiss = { availableUpdate = null }
+        )
+    }
 
     // Permission states
     var hasSmsPermission by remember {
@@ -239,6 +264,27 @@ fun ClientHomeScreen(
                     },
                     actions = {
                         IconButton(
+                            onClick = {
+                                scope.launch {
+                                    isCheckingUpdate = true
+                                    Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
+                                    val info = UpdateChecker.checkForUpdates(context)
+                                    isCheckingUpdate = false
+                                    if (info.hasUpdate) {
+                                        availableUpdate = info
+                                    } else {
+                                        Toast.makeText(context, "You are using the latest version (v${info.currentVersion})", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SystemUpdate,
+                                contentDescription = "Check for Updates",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
                             onClick = { viewModel.switchRole(onChangeRole) },
                             modifier = Modifier.testTag("client_switch_role_button")
                         ) {
@@ -359,11 +405,19 @@ fun ClientHomeScreen(
             item {
                 var showChangeDialog by remember { mutableStateOf(false) }
                 var newHostCodeInput by remember { mutableStateOf("") }
+                var isConnecting by remember { mutableStateOf(false) }
+
+                val isHostLinked = !linkedHostUid.isNullOrEmpty()
 
                 Card(
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFCAC4D0)),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isHostLinked) Color.White else Color(0xFFFFFBEB)
+                    ),
+                    border = BorderStroke(
+                        1.5.dp,
+                        if (isHostLinked) Color(0xFFCAC4D0) else Color(0xFFF59E0B)
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -379,43 +433,58 @@ fun ClientHomeScreen(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.8.sp,
-                                color = MaterialTheme.colorScheme.primary
+                                color = if (isHostLinked) MaterialTheme.colorScheme.primary else Color(0xFFB45309)
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (!linkedHostUid.isNullOrEmpty()) "Host Channel: $linkedHostUid" else "No Host Linked (Tap to set)",
+                                text = if (isHostLinked) "Host Channel: $linkedHostUid" else "No Host Linked (Tap to set)",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1D1B20)
+                                color = if (isHostLinked) Color(0xFF1D1B20) else Color(0xFF92400E)
                             )
                         }
 
                         FilledTonalButton(
-                            onClick = { showChangeDialog = true },
+                            onClick = {
+                                newHostCodeInput = linkedHostUid ?: ""
+                                showChangeDialog = true
+                            },
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Change Host", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isHostLinked) "Change Host" else "Set Host Code",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
 
                 if (showChangeDialog) {
                     androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { showChangeDialog = false },
+                        onDismissRequest = {
+                            if (!isConnecting) showChangeDialog = false
+                        },
                         title = { Text("Set Host Channel Code", fontWeight = FontWeight.Bold) },
                         text = {
                             Column {
                                 Text(
-                                    "Enter the Host Code displayed on your receiving phone:",
+                                    "Enter the 6-character Host Code displayed at the top of your Host phone's screen:",
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 androidx.compose.material3.OutlinedTextField(
                                     value = newHostCodeInput,
-                                    onValueChange = { newHostCodeInput = it.uppercase() },
+                                    onValueChange = {
+                                        if (it.length <= 8) {
+                                            newHostCodeInput = it.uppercase()
+                                        }
+                                    },
                                     label = { Text("Host Code (e.g. 6 chars)") },
+                                    placeholder = { Text("e.g. A3K9X2") },
                                     singleLine = true,
+                                    enabled = !isConnecting,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -423,19 +492,34 @@ fun ClientHomeScreen(
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    if (newHostCodeInput.isNotBlank()) {
-                                        viewModel.updateLinkedHostCode(newHostCodeInput.trim())
-                                        showChangeDialog = false
-                                        Toast.makeText(context, "Linked to Host $newHostCodeInput", Toast.LENGTH_SHORT).show()
+                                    val clean = newHostCodeInput.trim().uppercase()
+                                    if (clean.isNotBlank()) {
+                                        isConnecting = true
+                                        viewModel.updateLinkedHostCode(clean) { success, msg ->
+                                            isConnecting = false
+                                            showChangeDialog = false
+                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        }
                                     }
-                                }
+                                },
+                                enabled = newHostCodeInput.isNotBlank() && !isConnecting
                             ) {
-                                Text("Save & Connect")
+                                if (isConnecting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text("Save & Connect")
+                                }
                             }
                         },
                         dismissButton = {
-                            androidx.compose.material3.TextButton(onClick = { showChangeDialog = false }) {
-                                Text("Cancel")
+                            if (!isConnecting) {
+                                androidx.compose.material3.TextButton(onClick = { showChangeDialog = false }) {
+                                    Text("Cancel")
+                                }
                             }
                         }
                     )

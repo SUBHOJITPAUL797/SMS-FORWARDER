@@ -29,16 +29,28 @@ class AuthRepository(
         return preferencesRepository.getOrCreateHostCode()
     }
 
-    suspend fun setUserRole(role: UserRole): Result<Unit> {
+    suspend fun setUserRoleLocal(role: UserRole) {
         preferencesRepository.setUserRole(role)
-        val deviceUid = preferencesRepository.getOrCreateDeviceUid()
-        val hostCode = if (role == UserRole.HOST) preferencesRepository.getOrCreateHostCode() else null
-        return firestoreSource.saveUserProfile(
-            uid = deviceUid,
-            email = "device@smsbridge.local",
-            role = role,
-            linkedUid = hostCode
-        )
+    }
+
+    suspend fun syncUserProfile(role: UserRole): Result<Unit> {
+        return try {
+            val deviceUid = preferencesRepository.getOrCreateDeviceUid()
+            val hostCode = if (role == UserRole.HOST) preferencesRepository.getOrCreateHostCode() else null
+            firestoreSource.saveUserProfile(
+                uid = deviceUid,
+                email = "device@smsbridge.local",
+                role = role,
+                linkedUid = hostCode
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun setUserRole(role: UserRole): Result<Unit> {
+        setUserRoleLocal(role)
+        return syncUserProfile(role)
     }
 
     suspend fun resetRole() {

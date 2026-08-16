@@ -74,14 +74,19 @@ class ClientViewModel(
         }
     }
 
-    fun updateLinkedHostCode(hostCode: String) {
+    fun updateLinkedHostCode(hostCode: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
         viewModelScope.launch {
             val cleanCode = hostCode.trim().uppercase()
-            authRepository.setUserRole(com.example.domain.model.UserRole.CLIENT)
+            authRepository.setUserRoleLocal(com.example.domain.model.UserRole.CLIENT)
             val preferences = com.example.SmsBridgeApp.instance.preferencesRepository
             preferences.setLinkedDevice(cleanCode, "Host ($cleanCode)")
-            smsRepository.registerClientLink(cleanCode)
+            val res = smsRepository.registerClientLink(cleanCode)
             smsRepository.syncAllPendingMessages()
+            if (res.isSuccess) {
+                onResult(true, "Connected to Host $cleanCode")
+            } else {
+                onResult(false, res.exceptionOrNull()?.localizedMessage ?: "Saved locally. Connection pending sync.")
+            }
         }
     }
 

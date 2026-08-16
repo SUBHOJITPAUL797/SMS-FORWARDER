@@ -58,9 +58,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +89,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.SystemUpdate
+import com.example.ui.update.InAppUpdateDialog
+import com.example.util.UpdateChecker
+import kotlinx.coroutines.launch
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HostHomeScreen(
@@ -104,6 +111,25 @@ fun HostHomeScreen(
 
     val pullToRefreshState = rememberPullToRefreshState()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+
+    // Automatic update check in background on launch
+    LaunchedEffect(Unit) {
+        val info = UpdateChecker.checkForUpdates(context)
+        if (info.hasUpdate) {
+            availableUpdate = info
+        }
+    }
+
+    if (availableUpdate != null) {
+        InAppUpdateDialog(
+            updateInfo = availableUpdate!!,
+            onDismiss = { availableUpdate = null }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -164,6 +190,27 @@ fun HostHomeScreen(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
+                        }
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    isCheckingUpdate = true
+                                    Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
+                                    val info = UpdateChecker.checkForUpdates(context)
+                                    isCheckingUpdate = false
+                                    if (info.hasUpdate) {
+                                        availableUpdate = info
+                                    } else {
+                                        Toast.makeText(context, "You are using the latest version (v${info.currentVersion})", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SystemUpdate,
+                                contentDescription = "Check for Updates",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         IconButton(
                             onClick = { viewModel.switchRole(onChangeRole) },

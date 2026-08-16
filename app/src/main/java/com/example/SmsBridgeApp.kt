@@ -58,9 +58,10 @@ class SmsBridgeApp : Application() {
         try {
             if (FirebaseApp.getApps(this).isEmpty()) {
                 val options = com.google.firebase.FirebaseOptions.Builder()
-                    .setApplicationId("com.aistudio.smsbridge.kxmpzq")
-                    .setApiKey("AIzaSyFakeKeyForTestingAndAppInit12345678")
-                    .setProjectId("sms-bridge-demo")
+                    .setApplicationId("com.aistudio.smsbridge.v8k2p")
+                    .setApiKey("AIzaSyDjVqas7AANFiZLpVUUuxqBXAPwRIdAQzM")
+                    .setProjectId("dasmo-scanner-android")
+                    .setStorageBucket("dasmo-scanner-android.firebasestorage.app")
                     .build()
                 FirebaseApp.initializeApp(this, options)
             }

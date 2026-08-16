@@ -18,8 +18,12 @@ class RoleSelectViewModel(
 
     fun selectRole(role: UserRole, onComplete: () -> Unit) {
         viewModelScope.launch {
-            authRepository.setUserRole(role)
+            // Save role locally immediately to prevent any UI freeze or network delay
+            authRepository.setUserRoleLocal(role)
+            // Trigger instant screen transition
             onComplete()
+            // Sync user profile to Firestore in background
+            authRepository.syncUserProfile(role)
         }
     }
 
