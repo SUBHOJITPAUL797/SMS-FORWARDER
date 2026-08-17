@@ -54,13 +54,13 @@ class SmsRepository(
         body: String,
         receivedAt: Long
     ): Result<Unit> {
-        val timeBucket = receivedAt / 15_000L
+        val timeBucket = receivedAt / 4_000L
         val dedupKey = "${sender.trim()}|${body.trim()}|$timeBucket"
         val now = System.currentTimeMillis()
         val lastSeen = recentSmsCache[dedupKey]
 
-        if (lastSeen != null && (now - lastSeen) < 15_000L) {
-            Log.d(TAG, "Duplicate SMS ignored by dedup cache: $dedupKey")
+        if (lastSeen != null && (now - lastSeen) < 4_000L) {
+            Log.d(TAG, "Duplicate broadcast SMS ignored by dedup cache: $dedupKey")
             return Result.success(Unit)
         }
         recentSmsCache[dedupKey] = now

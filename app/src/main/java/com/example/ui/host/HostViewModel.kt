@@ -72,7 +72,7 @@ class HostViewModel(
             val seenKeys = mutableSetOf<String>()
             val deduplicated = mutableListOf<SmsMessage>()
             for (msg in list) {
-                val timeBucket = msg.receivedAt / 15_000L
+                val timeBucket = msg.receivedAt / 4_000L
                 val contentKey = "${msg.sender.trim()}|${msg.body.trim()}|$timeBucket"
                 val idKey = msg.messageId
 

@@ -24,7 +24,7 @@ class SmsReceiver : BroadcastReceiver() {
          * resolve to the exact same messageId.
          */
         fun generateMessageId(sender: String, body: String, timestamp: Long): String {
-            val timeBucket = timestamp / 15_000L // 15-second bucket
+            val timeBucket = timestamp / 4_000L // 4-second safety window
             val raw = "${sender.trim()}|${body.trim()}|$timeBucket"
             return try {
                 val digest = MessageDigest.getInstance("SHA-256")

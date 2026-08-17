@@ -45,7 +45,7 @@ class ClientViewModel(
             val seen = mutableSetOf<String>()
             val deduped = mutableListOf<SmsQueueEntity>()
             for (msg in list) {
-                val timeBucket = msg.receivedAt / 15_000L
+                val timeBucket = msg.receivedAt / 4_000L
                 val key = "${msg.sender.trim()}|${msg.body.trim()}|$timeBucket"
                 if (seen.add(msg.messageId) && seen.add(key)) {
                     deduped.add(msg)
