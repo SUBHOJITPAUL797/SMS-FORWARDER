@@ -11,12 +11,29 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.util.UUID
+import java.security.MessageDigest
 
 class SmsReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "SmsReceiver"
+
+        /**
+         * Generates a deterministic, unique SHA-256 fingerprint for the SMS message.
+         * Buckets timestamp by 15-second windows to guarantee multi-part / duplicate intents
+         * resolve to the exact same messageId.
+         */
+        fun generateMessageId(sender: String, body: String, timestamp: Long): String {
+            val timeBucket = timestamp / 15_000L // 15-second bucket
+            val raw = "${sender.trim()}|${body.trim()}|$timeBucket"
+            return try {
+                val digest = MessageDigest.getInstance("SHA-256")
+                val hash = digest.digest(raw.toByteArray(Charsets.UTF_8))
+                hash.joinToString("") { "%02x".format(it) }.take(24)
+            } catch (e: Exception) {
+                "${Math.abs(raw.hashCode())}"
+            }
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,7 +47,7 @@ class SmsReceiver : BroadcastReceiver() {
             return
         }
 
-        // Group by sender in case multiple messages are in the same batch
+        // Group by sender in case multiple messages or multi-part segments are in the same batch
         val sender = messages[0].displayOriginatingAddress ?: "Unknown"
         val bodyBuilder = StringBuilder()
         var timestamp = messages[0].timestampMillis
@@ -43,7 +60,7 @@ class SmsReceiver : BroadcastReceiver() {
         }
 
         val fullBody = bodyBuilder.toString()
-        val messageId = UUID.randomUUID().toString()
+        val messageId = generateMessageId(sender, fullBody, timestamp)
 
         Log.i(TAG, "Parsed incoming SMS from $sender (id: $messageId, length: ${fullBody.length})")
 

@@ -67,6 +67,21 @@ class HostViewModel(
                 flowOf(emptyList())
             }
         }
+        .map { list ->
+            // Smart Deduplication: deduplicate by messageId or by (sender + body + 15s window)
+            val seenKeys = mutableSetOf<String>()
+            val deduplicated = mutableListOf<SmsMessage>()
+            for (msg in list) {
+                val timeBucket = msg.receivedAt / 15_000L
+                val contentKey = "${msg.sender.trim()}|${msg.body.trim()}|$timeBucket"
+                val idKey = msg.messageId
+
+                if (seenKeys.add(idKey) && seenKeys.add(contentKey)) {
+                    deduplicated.add(msg)
+                }
+            }
+            deduplicated
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val isLiveConnected: StateFlow<Boolean> = combine(connectedClients, rawMessages) { clients, messages ->

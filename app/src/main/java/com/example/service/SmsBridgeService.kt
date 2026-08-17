@@ -7,18 +7,15 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import android.provider.Telephony
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.SmsBridgeApp
-import com.example.receiver.SmsReceiver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,14 +32,13 @@ class SmsBridgeService : Service() {
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var dynamicSmsReceiver: SmsReceiver? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "SmsBridgeService onCreate()")
 
-        // 1. Acquire partial wake lock
+        // 1. Acquire partial wake lock to keep background processing responsive
         val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         wakeLock = powerManager?.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -62,14 +58,10 @@ class SmsBridgeService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // 3. Register dynamic SMS receiver as backup
-        registerDynamicReceiver()
-
-        // 4. Record service active in preferences
+        // 3. Record service active in preferences and sync pending queue
         serviceScope.launch {
             val app = applicationContext as? SmsBridgeApp
             app?.preferencesRepository?.setServiceActive(true)
-            // Also trigger pending message sync
             app?.smsRepository?.syncAllPendingMessages()
         }
     }
@@ -86,7 +78,6 @@ class SmsBridgeService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "SmsBridgeService onDestroy()")
-        unregisterDynamicReceiver()
         wakeLock?.let {
             if (it.isHeld) it.release()
         }
@@ -96,29 +87,6 @@ class SmsBridgeService : Service() {
         }
         serviceScope.cancel()
         super.onDestroy()
-    }
-
-    private fun registerDynamicReceiver() {
-        if (dynamicSmsReceiver == null) {
-            dynamicSmsReceiver = SmsReceiver()
-            val filter = IntentFilter(Telephony.Sms.Intents.SMS_RECEIVED_ACTION).apply {
-                priority = 999
-            }
-            registerReceiver(dynamicSmsReceiver, filter)
-            Log.d(TAG, "Dynamic SMS receiver registered")
-        }
-    }
-
-    private fun unregisterDynamicReceiver() {
-        dynamicSmsReceiver?.let {
-            try {
-                unregisterReceiver(it)
-                Log.d(TAG, "Dynamic SMS receiver unregistered")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error unregistering receiver", e)
-            }
-            dynamicSmsReceiver = null
-        }
     }
 
     private fun createServiceNotification(): Notification {
@@ -138,7 +106,6 @@ class SmsBridgeService : Service() {
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
 }

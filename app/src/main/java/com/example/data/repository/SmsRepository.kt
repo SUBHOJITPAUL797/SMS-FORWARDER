@@ -33,6 +33,14 @@ class SmsRepository(
         private const val TAG = "SmsRepository"
     }
 
+    private val recentSmsCache = java.util.Collections.synchronizedMap(
+        object : java.util.LinkedHashMap<String, Long>(50, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
+                return size > 100
+            }
+        }
+    )
+
     private val smsDao = database.smsQueueDao()
 
     val totalQueueCount: Flow<Int> = smsDao.getTotalCountFlow()
@@ -46,6 +54,17 @@ class SmsRepository(
         body: String,
         receivedAt: Long
     ): Result<Unit> {
+        val timeBucket = receivedAt / 15_000L
+        val dedupKey = "${sender.trim()}|${body.trim()}|$timeBucket"
+        val now = System.currentTimeMillis()
+        val lastSeen = recentSmsCache[dedupKey]
+
+        if (lastSeen != null && (now - lastSeen) < 15_000L) {
+            Log.d(TAG, "Duplicate SMS ignored by dedup cache: $dedupKey")
+            return Result.success(Unit)
+        }
+        recentSmsCache[dedupKey] = now
+
         val entity = SmsQueueEntity(
             messageId = messageId,
             sender = sender,
@@ -169,7 +188,7 @@ class SmsRepository(
                     val body = if (bodyCol >= 0) c.getString(bodyCol) ?: "" else ""
                     val date = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
 
-                    val messageId = "real_sms_$id"
+                    val messageId = com.example.receiver.SmsReceiver.generateMessageId(address, body, date)
                     // Check if already in DB to avoid duplicating
                     val existing = smsDao.getByMessageId(messageId)
                     if (existing == null) {
