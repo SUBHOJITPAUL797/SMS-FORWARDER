@@ -9,4 +9,5 @@ sealed class Screen(val route: String) {
     object HostPairing : Screen("host_pairing")
     object HostHome : Screen("host_home")
     object ClientHome : Screen("client_home")
+    object DeveloperProfile : Screen("developer_profile")
 }

@@ -47,6 +47,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import com.example.domain.model.UserRole
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,6 +60,7 @@ fun RoleSelectScreen(
     viewModel: RoleSelectViewModel,
     onSelectHost: () -> Unit,
     onSelectClient: () -> Unit,
+    onOpenDeveloperProfile: () -> Unit,
     onLoggedOut: () -> Unit
 ) {
     val userEmail by viewModel.userEmail.collectAsStateWithLifecycle()
@@ -70,14 +76,35 @@ fun RoleSelectScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { viewModel.logout(onLoggedOut) },
-                        modifier = Modifier.testTag("role_select_logout_button")
+                        onClick = onOpenDeveloperProfile,
+                        modifier = Modifier.testTag("developer_profile_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                            contentDescription = "Sign Out",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(
+                                    Brush.sweepGradient(
+                                        listOf(
+                                            Color(0xFF9333EA),
+                                            Color(0xFFC084FC),
+                                            Color(0xFF6750A4),
+                                            Color(0xFF9333EA)
+                                        )
+                                    ),
+                                    CircleShape
+                                )
+                                .padding(2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.dev_subhojit),
+                                contentDescription = "Subhojit Paul - Developer Profile",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

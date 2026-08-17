@@ -16,6 +16,7 @@ import com.example.ui.auth.LoginScreen
 import com.example.ui.auth.RegisterScreen
 import com.example.ui.client.ClientHomeScreen
 import com.example.ui.client.ClientViewModel
+import com.example.ui.developer.DeveloperProfileScreen
 import com.example.ui.host.HostHomeScreen
 import com.example.ui.host.HostViewModel
 import com.example.ui.pairing.ClientPairingScreen
@@ -107,6 +108,9 @@ fun AppNavGraph(
                         popUpTo(Screen.RoleSelect.route) { inclusive = true }
                     }
                 },
+                onOpenDeveloperProfile = {
+                    navController.navigate(Screen.DeveloperProfile.route)
+                },
                 onLoggedOut = {
                     navController.navigate(Screen.RoleSelect.route) {
                         popUpTo(0) { inclusive = true }
@@ -155,6 +159,9 @@ fun AppNavGraph(
                 onChangeRole = {
                     navController.navigate(Screen.RoleSelect.route)
                 },
+                onOpenDeveloperProfile = {
+                    navController.navigate(Screen.DeveloperProfile.route)
+                },
                 onLoggedOut = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
@@ -171,10 +178,22 @@ fun AppNavGraph(
                 onChangeRole = {
                     navController.navigate(Screen.RoleSelect.route)
                 },
+                onOpenDeveloperProfile = {
+                    navController.navigate(Screen.DeveloperProfile.route)
+                },
                 onLoggedOut = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
                     }
+                }
+            )
+        }
+
+        // Developer Profile Screen
+        composable(Screen.DeveloperProfile.route) {
+            DeveloperProfileScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
                 }
             )
         }

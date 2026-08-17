@@ -102,11 +102,19 @@ import com.example.ui.update.InAppUpdateDialog
 import com.example.util.UpdateChecker
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.R
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientHomeScreen(
     viewModel: ClientViewModel,
     onChangeRole: () -> Unit,
+    onOpenDeveloperProfile: () -> Unit,
     onLoggedOut: () -> Unit
 ) {
     val context = LocalContext.current
@@ -293,6 +301,37 @@ fun ClientHomeScreen(
                                 contentDescription = "Switch Role",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                        IconButton(
+                            onClick = onOpenDeveloperProfile,
+                            modifier = Modifier.testTag("client_developer_profile_button")
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .background(
+                                        Brush.sweepGradient(
+                                            listOf(
+                                                Color(0xFF9333EA),
+                                                Color(0xFFC084FC),
+                                                Color(0xFF6750A4),
+                                                Color(0xFF9333EA)
+                                            )
+                                        ),
+                                        CircleShape
+                                    )
+                                    .padding(2.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.dev_subhojit),
+                                    contentDescription = "Subhojit Paul - Developer Profile",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
