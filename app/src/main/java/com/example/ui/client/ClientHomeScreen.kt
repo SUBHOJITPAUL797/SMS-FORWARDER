@@ -108,6 +108,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import com.example.R
+import com.example.util.AutoStartPermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,6 +129,7 @@ fun ClientHomeScreen(
     var isServiceRunning by remember { mutableStateOf(true) }
     var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
+    var autoStartDismissed by remember { mutableStateOf(false) }
 
     // Automatic update check in background on launch
     LaunchedEffect(Unit) {
@@ -433,6 +435,93 @@ fun ClientHomeScreen(
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Text("Settings", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Xiaomi / Redmi AutoStart and Background Persistence Warning Card
+            if ((!isBatteryExempt || AutoStartPermissionHelper.isXiaomiOrRedmi()) && !autoStartDismissed) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                        border = BorderStroke(1.5.dp, Color(0xFFFDE68A)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(Color(0xFFFEF3C7), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PowerSettingsNew,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD97706),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = if (AutoStartPermissionHelper.isXiaomiOrRedmi()) "Xiaomi/Redmi Auto-Start Setup" else "Background Battery Exemption",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 15.sp,
+                                        color = Color(0xFF92400E)
+                                    )
+                                    Text(
+                                        text = "Allow app to run automatically after reboot",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFFB45309)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Text(
+                                text = "Xiaomi/Redmi devices require enabling 'AutoStart' and setting Battery Saver to 'No restrictions' so SMS Forwarder can restart and forward SMS without touching your phone.",
+                                fontSize = 13.sp,
+                                color = Color(0xFF78350F),
+                                lineHeight = 18.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        AutoStartPermissionHelper.openAutoStartSettings(context)
+                                        autoStartDismissed = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Enable Auto-Start", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        AutoStartPermissionHelper.requestIgnoreBatteryOptimizations(context)
+                                        autoStartDismissed = true
+                                    },
+                                    border = BorderStroke(1.dp, Color(0xFFD97706)),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Battery Saver", color = Color(0xFFD97706), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                             }
                         }

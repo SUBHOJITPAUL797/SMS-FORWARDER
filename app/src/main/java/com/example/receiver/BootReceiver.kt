@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.example.SmsBridgeApp
@@ -23,37 +24,49 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
-        if (action == Intent.ACTION_BOOT_COMPLETED ||
-            action == "android.intent.action.QUICKBOOT_POWERON" ||
-            action == "com.htc.intent.action.QUICKBOOT_POWERON"
-        ) {
-            Log.i(TAG, "Boot completed event received ($action). Checking role to restart monitoring service...")
+        Log.i(TAG, "Device Boot/Restart event received ($action). Initializing auto-start sequence...")
 
-            val pendingResult = goAsync()
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-            scope.launch {
-                try {
-                    val app = context.applicationContext as? SmsBridgeApp
-                    val userPrefs = app?.preferencesRepository
-                    val role = userPrefs?.userRoleFlow?.firstOrNull() ?: UserRole.UNSET
-                    val wasActive = userPrefs?.isServiceActiveFlow?.firstOrNull() ?: false
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val wakeLock = powerManager?.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "SmsBridge:BootReceiverWakeLock"
+        )
+        wakeLock?.acquire(45_000L) // Hold CPU awake for 45s while starting foreground service
 
-                    if (role == UserRole.CLIENT && wasActive) {
-                        Log.i(TAG, "Device is configured as Client with active monitoring. Starting SmsBridgeService...")
-                        val serviceIntent = Intent(context, SmsBridgeService::class.java)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            ContextCompat.startForegroundService(context, serviceIntent)
-                        } else {
-                            context.startService(serviceIntent)
-                        }
-                    } else {
-                        Log.d(TAG, "Device is not in active Client mode (role=$role, wasActive=$wasActive). No service start needed.")
+        val pendingResult = goAsync()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope.launch {
+            try {
+                val app = context.applicationContext as? SmsBridgeApp
+                val userPrefs = app?.preferencesRepository
+                val role = userPrefs?.userRoleFlow?.firstOrNull() ?: UserRole.UNSET
+                val wasActive = userPrefs?.isServiceActiveFlow?.firstOrNull() ?: false
+
+                Log.i(TAG, "Boot state inspection: role=$role, wasActive=$wasActive")
+
+                // Auto-start for any configured role (Client or Host) that was active or paired
+                if (role != UserRole.UNSET) {
+                    Log.i(TAG, "Device has configured role ($role). Starting SmsBridgeService immediately...")
+                    val serviceIntent = Intent(context, SmsBridgeService::class.java).apply {
+                        putExtra("auto_started_from_boot", true)
+                        putExtra("role_key", role.key)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in BootReceiver restart flow", e)
-                } finally {
-                    pendingResult.finish()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        ContextCompat.startForegroundService(context, serviceIntent)
+                    } else {
+                        context.startService(serviceIntent)
+                    }
+                    userPrefs?.setServiceActive(true)
+                    app?.smsRepository?.syncAllPendingMessages()
+                    Log.i(TAG, "SmsBridgeService successfully dispatched on boot for role $role.")
+                } else {
+                    Log.d(TAG, "Device role is UNSET ($role). Skipping automatic background service start.")
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in BootReceiver restart flow", e)
+            } finally {
+                wakeLock?.let { if (it.isHeld) it.release() }
+                pendingResult.finish()
             }
         }
     }

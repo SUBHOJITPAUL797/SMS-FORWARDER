@@ -39,11 +39,13 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SystemUpdate
+import com.example.util.AutoStartPermissionHelper
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -225,7 +227,14 @@ fun DeveloperProfileScreen(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // 4. TERMS & CONDITIONS (DISCLAIMER) CARD
+                // 4. AUTOSTART & BACKGROUND PERSISTENCE SETUP
+                AutoStartSettingsCard(
+                    context = context
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // 5. TERMS & CONDITIONS (DISCLAIMER) CARD
                 TermsAndConditionsCard(
                     isExpanded = showTermsDetails,
                     onToggleExpand = { showTermsDetails = !showTermsDetails }
@@ -583,6 +592,103 @@ private fun AppUpdaterCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Check for Updates Now", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoStartSettingsCard(
+    context: Context
+) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        border = BorderStroke(1.5.dp, PurpleBorder),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(Color(0xFFFEF3C7), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PowerSettingsNew,
+                        contentDescription = null,
+                        tint = Color(0xFFD97706),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Auto-Start & Restart Settings",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkText
+                    )
+                    Text(
+                        text = "Xiaomi, Redmi, Vivo, Oppo & Samsung",
+                        fontSize = 12.sp,
+                        color = Color(0xFFB45309),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = "On Xiaomi/Redmi (MIUI & HyperOS) and other custom Android skins, you must enable 'AutoStart' in app settings and set Battery Saver to 'No restrictions' so SMS Forwarder can restart automatically after your phone reboots.",
+                fontSize = 13.sp,
+                color = Color(0xFF374151),
+                lineHeight = 18.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        AutoStartPermissionHelper.openAutoStartSettings(context)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFD97706)
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("AutoStart Settings", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        AutoStartPermissionHelper.requestIgnoreBatteryOptimizations(context)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.5.dp, Color(0xFFD97706)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFFD97706)
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Battery Saver", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }

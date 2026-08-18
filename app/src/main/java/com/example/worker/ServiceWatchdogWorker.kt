@@ -31,13 +31,15 @@ class ServiceWatchdogWorker(
             val currentRole = userPrefs.userRoleFlow.firstOrNull() ?: UserRole.UNSET
             val isServiceSupposedToBeActive = userPrefs.isServiceActiveFlow.firstOrNull() ?: false
 
-            if (currentRole == UserRole.CLIENT && isServiceSupposedToBeActive) {
+            if ((currentRole == UserRole.CLIENT || currentRole == UserRole.HOST) && isServiceSupposedToBeActive) {
                 val isRunning = isServiceRunning(applicationContext, SmsBridgeService::class.java)
-                Log.d(TAG, "Watchdog check: Client mode active. Is SmsBridgeService running? $isRunning")
+                Log.d(TAG, "Watchdog check: $currentRole mode active. Is SmsBridgeService running? $isRunning")
 
                 if (!isRunning) {
-                    Log.i(TAG, "SmsBridgeService was killed or not running. Restarting service now.")
-                    val serviceIntent = Intent(applicationContext, SmsBridgeService::class.java)
+                    Log.i(TAG, "SmsBridgeService was killed or not running. Restarting service now for $currentRole.")
+                    val serviceIntent = Intent(applicationContext, SmsBridgeService::class.java).apply {
+                        putExtra("role_key", currentRole.key)
+                    }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         ContextCompat.startForegroundService(applicationContext, serviceIntent)
                     } else {
