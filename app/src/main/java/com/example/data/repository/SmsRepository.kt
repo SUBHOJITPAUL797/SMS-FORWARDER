@@ -22,6 +22,20 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import java.util.concurrent.TimeUnit
 
+enum class InboxSyncScope(val label: String, val maxCount: Int?, val daysLimit: Int?) {
+    ALL_TIME("Entire Inbox (All Time - No Limit)", null, null),
+    LAST_500("Last 500 Messages", 500, null),
+    LAST_100("Last 100 Messages", 100, null),
+    LAST_30_DAYS("Last 30 Days", null, 30),
+    LAST_7_DAYS("Last 7 Days", null, 7)
+}
+
+data class SyncResult(
+    val totalFound: Int,
+    val newImported: Int,
+    val alreadyExisted: Int
+)
+
 class SmsRepository(
     private val context: Context,
     private val database: AppDatabase,
@@ -154,9 +168,9 @@ class SmsRepository(
 
     /**
      * Reads real SMS messages directly from Android's Telephony ContentProvider (inbox)
-     * and forwards them to the paired Host device.
+     * and forwards them to the paired Host device with support for all-time and custom range sync.
      */
-    suspend fun syncRealDeviceInbox(maxCount: Int = 50): Result<Int> {
+    suspend fun syncRealDeviceInbox(scope: InboxSyncScope = InboxSyncScope.ALL_TIME): Result<SyncResult> {
         return try {
             val contentResolver = context.contentResolver
             val uri = android.provider.Telephony.Sms.Inbox.CONTENT_URI
@@ -167,42 +181,96 @@ class SmsRepository(
                 android.provider.Telephony.Sms.DATE
             )
 
+            var selection: String? = null
+            var selectionArgs: Array<String>? = null
+            if (scope.daysLimit != null) {
+                val cutoff = System.currentTimeMillis() - (scope.daysLimit * 24 * 3600 * 1000L)
+                selection = "${android.provider.Telephony.Sms.DATE} >= ?"
+                selectionArgs = arrayOf(cutoff.toString())
+            }
+
             val cursor = contentResolver.query(
                 uri,
                 projection,
-                null,
-                null,
+                selection,
+                selectionArgs,
                 "${android.provider.Telephony.Sms.DATE} DESC"
             )
 
-            var importedCount = 0
+            var totalFound = 0
+            var newImported = 0
+            var alreadyExisted = 0
+            val pendingEntities = mutableListOf<SmsQueueEntity>()
+            val hostUid = preferencesRepository.linkedUidFlow.firstOrNull()
+            val clientUid = preferencesRepository.getOrCreateDeviceUid()
+            val clientDeviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+
             cursor?.use { c ->
-                val idCol = c.getColumnIndex(android.provider.Telephony.Sms._ID)
                 val addressCol = c.getColumnIndex(android.provider.Telephony.Sms.ADDRESS)
                 val bodyCol = c.getColumnIndex(android.provider.Telephony.Sms.BODY)
                 val dateCol = c.getColumnIndex(android.provider.Telephony.Sms.DATE)
 
-                while (c.moveToNext() && importedCount < maxCount) {
-                    val id = if (idCol >= 0) c.getString(idCol) else java.util.UUID.randomUUID().toString()
+                while (c.moveToNext()) {
+                    if (scope.maxCount != null && totalFound >= scope.maxCount) {
+                        break
+                    }
+                    totalFound++
+
                     val address = if (addressCol >= 0) c.getString(addressCol) ?: "Unknown" else "Unknown"
                     val body = if (bodyCol >= 0) c.getString(bodyCol) ?: "" else ""
                     val date = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
 
                     val messageId = com.example.receiver.SmsReceiver.generateMessageId(address, body, date)
-                    // Check if already in DB to avoid duplicating
                     val existing = smsDao.getByMessageId(messageId)
                     if (existing == null) {
-                        handleIncomingSms(
+                        val entity = SmsQueueEntity(
                             messageId = messageId,
                             sender = address,
                             body = body,
-                            receivedAt = date
+                            receivedAt = date,
+                            status = QueueStatus.PENDING.name,
+                            retryCount = 0
                         )
-                        importedCount++
+                        pendingEntities.add(entity)
+                        newImported++
+                    } else {
+                        alreadyExisted++
                     }
                 }
             }
-            Result.success(importedCount)
+
+            // Batch insert all new messages into Room DB
+            if (pendingEntities.isNotEmpty()) {
+                smsDao.insertAll(pendingEntities)
+            }
+
+            // Immediately upload in controlled batches if host is linked
+            if (!hostUid.isNullOrEmpty() && pendingEntities.isNotEmpty()) {
+                val chunks = pendingEntities.chunked(25)
+                for (chunk in chunks) {
+                    for (entity in chunk) {
+                        val msg = SmsMessage(
+                            messageId = entity.messageId,
+                            sender = entity.sender,
+                            body = entity.body,
+                            receivedAt = entity.receivedAt,
+                            uploadedAt = System.currentTimeMillis(),
+                            clientUid = clientUid,
+                            clientDeviceName = clientDeviceName,
+                            read = false
+                        )
+                        val uploadRes = firestoreSource.uploadSms(hostUid, msg)
+                        if (uploadRes.isSuccess) {
+                            smsDao.updateStatus(entity.messageId, QueueStatus.UPLOADED.name)
+                        } else {
+                            enqueueUploadWorker(entity.messageId)
+                        }
+                    }
+                    kotlinx.coroutines.delay(20)
+                }
+            }
+
+            Result.success(SyncResult(totalFound, newImported, alreadyExisted))
         } catch (e: Exception) {
             Log.e(TAG, "Error querying real device SMS inbox", e)
             Result.failure(e)
@@ -252,5 +320,15 @@ class SmsRepository(
 
     suspend fun markAllAsRead(hostUid: String): Result<Unit> {
         return firestoreSource.markAllSmsAsRead(hostUid)
+    }
+
+    suspend fun deleteSms(hostUid: String, messageId: String): Result<Unit> {
+        smsDao.deleteByMessageId(messageId)
+        return firestoreSource.deleteSms(hostUid, messageId)
+    }
+
+    suspend fun deleteMultipleSms(hostUid: String, messageIds: List<String>): Result<Unit> {
+        smsDao.deleteMultiple(messageIds)
+        return firestoreSource.deleteMultipleSms(hostUid, messageIds)
     }
 }

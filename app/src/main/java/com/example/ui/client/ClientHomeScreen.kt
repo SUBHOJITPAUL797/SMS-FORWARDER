@@ -107,7 +107,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.TextButton
 import com.example.R
+import com.example.data.repository.InboxSyncScope
 import com.example.util.AutoStartPermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -125,11 +132,14 @@ fun ClientHomeScreen(
     val pendingCount by viewModel.pendingCount.collectAsStateWithLifecycle()
     val recentMessages by viewModel.recentLocalMessages.collectAsStateWithLifecycle()
     val linkedHostUid by viewModel.linkedHostUid.collectAsStateWithLifecycle()
+    val isAutoStartConfigured by viewModel.isAutoStartConfigured.collectAsStateWithLifecycle()
 
     var isServiceRunning by remember { mutableStateOf(true) }
     var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
-    var autoStartDismissed by remember { mutableStateOf(false) }
+    var showSyncScopeDialog by remember { mutableStateOf(false) }
+    var selectedSyncScope by remember { mutableStateOf(InboxSyncScope.ALL_TIME) }
+    var isSyncingInbox by remember { mutableStateOf(false) }
 
     // Automatic update check in background on launch
     LaunchedEffect(Unit) {
@@ -143,6 +153,91 @@ fun ClientHomeScreen(
         InAppUpdateDialog(
             updateInfo = availableUpdate!!,
             onDismiss = { availableUpdate = null }
+        )
+    }
+
+    // Sync Scope Selection Dialog
+    if (showSyncScopeDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isSyncingInbox) showSyncScopeDialog = false },
+            title = { Text("Sync Real SMS Inbox", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "Choose the date range or count of SMS to import from your device's SMS inbox and forward to your Host:",
+                        fontSize = 13.sp,
+                        color = Color(0xFF49454F)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    InboxSyncScope.entries.forEach { scopeOption ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { selectedSyncScope = scopeOption }
+                                .padding(vertical = 4.dp, horizontal = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = (selectedSyncScope == scopeOption),
+                                onClick = { selectedSyncScope = scopeOption },
+                                colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = scopeOption.label,
+                                fontSize = 13.sp,
+                                fontWeight = if (selectedSyncScope == scopeOption) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selectedSyncScope == scopeOption) MaterialTheme.colorScheme.primary else Color(0xFF1D1B20)
+                            )
+                        }
+                    }
+
+                    if (isSyncingInbox) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Importing & forwarding SMS...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isSyncingInbox = true
+                        viewModel.syncRealInbox(selectedSyncScope) { result, success ->
+                            isSyncingInbox = false
+                            showSyncScopeDialog = false
+                            if (success && result != null) {
+                                Toast.makeText(
+                                    context,
+                                    "✅ Inbox Scanned: ${result.totalFound} found, ${result.newImported} newly queued, ${result.alreadyExisted} already in DB",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(context, "Failed to read device SMS inbox", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    enabled = !isSyncingInbox
+                ) {
+                    Text("Start Sync", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                if (!isSyncingInbox) {
+                    TextButton(onClick = { showSyncScopeDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
         )
     }
 
@@ -443,7 +538,7 @@ fun ClientHomeScreen(
             }
 
             // Xiaomi / Redmi AutoStart and Background Persistence Warning Card
-            if ((!isBatteryExempt || AutoStartPermissionHelper.isXiaomiOrRedmi()) && !autoStartDismissed) {
+            if ((!isBatteryExempt || AutoStartPermissionHelper.isXiaomiOrRedmi()) && !isAutoStartConfigured) {
                 item {
                     Card(
                         shape = RoundedCornerShape(20.dp),
@@ -456,32 +551,53 @@ fun ClientHomeScreen(
                                 .fillMaxWidth()
                                 .padding(16.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .background(Color(0xFFFEF3C7), CircleShape),
-                                    contentAlignment = Alignment.Center
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(Color(0xFFFEF3C7), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PowerSettingsNew,
+                                            contentDescription = null,
+                                            tint = Color(0xFFD97706),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = if (AutoStartPermissionHelper.isXiaomiOrRedmi()) "Xiaomi/Redmi Auto-Start Setup" else "Background Battery Exemption",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 15.sp,
+                                            color = Color(0xFF92400E)
+                                        )
+                                        Text(
+                                            text = "Allow app to run automatically after reboot",
+                                            fontSize = 12.sp,
+                                            color = Color(0xFFB45309)
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = { viewModel.setAutoStartConfigured(true) },
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.PowerSettingsNew,
-                                        contentDescription = null,
-                                        tint = Color(0xFFD97706),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = if (AutoStartPermissionHelper.isXiaomiOrRedmi()) "Xiaomi/Redmi Auto-Start Setup" else "Background Battery Exemption",
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 15.sp,
-                                        color = Color(0xFF92400E)
-                                    )
-                                    Text(
-                                        text = "Allow app to run automatically after reboot",
-                                        fontSize = 12.sp,
-                                        color = Color(0xFFB45309)
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Dismiss",
+                                        tint = Color(0xFFB45309),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -504,7 +620,7 @@ fun ClientHomeScreen(
                                 Button(
                                     onClick = {
                                         AutoStartPermissionHelper.openAutoStartSettings(context)
-                                        autoStartDismissed = true
+                                        viewModel.setAutoStartConfigured(true)
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
                                     shape = RoundedCornerShape(12.dp),
@@ -516,7 +632,7 @@ fun ClientHomeScreen(
                                 OutlinedButton(
                                     onClick = {
                                         AutoStartPermissionHelper.requestIgnoreBatteryOptimizations(context)
-                                        autoStartDismissed = true
+                                        viewModel.setAutoStartConfigured(true)
                                     },
                                     border = BorderStroke(1.dp, Color(0xFFD97706)),
                                     shape = RoundedCornerShape(12.dp)
@@ -929,18 +1045,7 @@ fun ClientHomeScreen(
                                             )
                                         )
                                     } else {
-                                        Toast.makeText(context, "Scanning real SMS inbox...", Toast.LENGTH_SHORT).show()
-                                        viewModel.syncRealInbox { count, success ->
-                                            if (success) {
-                                                Toast.makeText(
-                                                    context,
-                                                    if (count > 0) "Imported and queued $count real SMS from phone inbox" else "No new inbox SMS to import (already up to date)",
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                            } else {
-                                                Toast.makeText(context, "Failed to read device SMS inbox", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
+                                        showSyncScopeDialog = true
                                     }
                                 },
                                 shape = RoundedCornerShape(14.dp),
@@ -969,7 +1074,7 @@ fun ClientHomeScreen(
                             ) {
                                 Icon(imageVector = Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Force Sync", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Retry Queue", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

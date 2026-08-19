@@ -22,6 +22,15 @@ interface SmsQueueDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(entity: SmsQueueEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(entities: List<SmsQueueEntity>): List<Long>
+
+    @Query("DELETE FROM sms_queue WHERE messageId = :messageId")
+    suspend fun deleteByMessageId(messageId: String)
+
+    @Query("DELETE FROM sms_queue WHERE messageId IN (:messageIds)")
+    suspend fun deleteMultiple(messageIds: List<String>)
+
     @Update
     suspend fun update(entity: SmsQueueEntity)
 

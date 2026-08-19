@@ -22,6 +22,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+import android.app.AlarmManager
+import android.os.SystemClock
+import com.example.receiver.BootReceiver
+
 class SmsBridgeService : Service() {
 
     companion object {
@@ -75,6 +79,39 @@ class SmsBridgeService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "SmsBridgeService onTaskRemoved() triggered (e.g. app cleared from Recents). Arming resurrection alarm...")
+        try {
+            val restartServiceIntent = Intent(applicationContext, BootReceiver::class.java).apply {
+                action = "com.example.action.RESTART_SERVICE"
+            }
+            val restartPendingIntent = PendingIntent.getBroadcast(
+                applicationContext,
+                1001,
+                restartServiceIntent,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            val triggerTime = SystemClock.elapsedRealtime() + 1500L
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager?.setExactAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerTime,
+                    restartPendingIntent
+                )
+            } else {
+                alarmManager?.set(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerTime,
+                    restartPendingIntent
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to schedule resurrection alarm onTaskRemoved", e)
+        }
+        super.onTaskRemoved(rootIntent)
+    }
 
     override fun onDestroy() {
         Log.d(TAG, "SmsBridgeService onDestroy()")

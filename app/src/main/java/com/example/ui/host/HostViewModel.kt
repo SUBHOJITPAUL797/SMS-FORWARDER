@@ -103,6 +103,96 @@ class HostViewModel(
         messages.count { !it.read }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    val isAutoStartConfigured: StateFlow<Boolean> = com.example.SmsBridgeApp.instance.preferencesRepository
+        .isAutoStartConfiguredFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setAutoStartConfigured(configured: Boolean) {
+        viewModelScope.launch {
+            com.example.SmsBridgeApp.instance.preferencesRepository.setAutoStartConfigured(configured)
+        }
+    }
+
+    // Lazy Loading Pagination State
+    private val _displayLimit = MutableStateFlow(25)
+    val displayLimit: StateFlow<Int> = _displayLimit.asStateFlow()
+
+    val pagedMessages: StateFlow<List<SmsMessage>> = combine(filteredMessages, _displayLimit) { list, limit ->
+        list.take(limit)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val totalMessagesCount: StateFlow<Int> = filteredMessages.map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val hasMoreMessages: StateFlow<Boolean> = combine(filteredMessages, _displayLimit) { list, limit ->
+        list.size > limit
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun loadMoreMessages() {
+        _displayLimit.value += 25
+    }
+
+    // Multi-Select and Deletion State
+    private val _selectedMessageIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedMessageIds: StateFlow<Set<String>> = _selectedMessageIds.asStateFlow()
+
+    private val _isSelectionMode = MutableStateFlow(false)
+    val isSelectionMode: StateFlow<Boolean> = _isSelectionMode.asStateFlow()
+
+    fun enterSelectionMode(initialMessageId: String? = null) {
+        _isSelectionMode.value = true
+        if (initialMessageId != null) {
+            _selectedMessageIds.value = setOf(initialMessageId)
+        }
+    }
+
+    fun exitSelectionMode() {
+        _isSelectionMode.value = false
+        _selectedMessageIds.value = emptySet()
+    }
+
+    fun toggleSelection(messageId: String) {
+        val current = _selectedMessageIds.value.toMutableSet()
+        if (current.contains(messageId)) {
+            current.remove(messageId)
+        } else {
+            current.add(messageId)
+        }
+        _selectedMessageIds.value = current
+        if (current.isEmpty()) {
+            _isSelectionMode.value = false
+        } else {
+            _isSelectionMode.value = true
+        }
+    }
+
+    fun selectAll(visibleIds: List<String>) {
+        _selectedMessageIds.value = visibleIds.toSet()
+        _isSelectionMode.value = true
+    }
+
+    fun deleteSingleMessage(messageId: String, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            if (code.isNotEmpty()) {
+                smsRepository.deleteSms(code, messageId)
+            }
+            onComplete()
+        }
+    }
+
+    fun deleteSelectedMessages(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            val ids = _selectedMessageIds.value.toList()
+            if (code.isNotEmpty() && ids.isNotEmpty()) {
+                smsRepository.deleteMultipleSms(code, ids)
+            }
+            exitSelectionMode()
+            onComplete()
+        }
+    }
+
     fun onSearchQueryChanged(newQuery: String) {
         _searchQuery.value = newQuery
     }

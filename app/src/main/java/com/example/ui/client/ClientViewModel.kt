@@ -70,13 +70,26 @@ class ClientViewModel(
         }
     }
 
-    fun syncRealInbox(onResult: (Int, Boolean) -> Unit) {
+    val isAutoStartConfigured: StateFlow<Boolean> = com.example.SmsBridgeApp.instance.preferencesRepository
+        .isAutoStartConfiguredFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setAutoStartConfigured(configured: Boolean) {
         viewModelScope.launch {
-            val res = smsRepository.syncRealDeviceInbox(maxCount = 100)
+            com.example.SmsBridgeApp.instance.preferencesRepository.setAutoStartConfigured(configured)
+        }
+    }
+
+    fun syncRealInbox(
+        scope: com.example.data.repository.InboxSyncScope = com.example.data.repository.InboxSyncScope.ALL_TIME,
+        onResult: (com.example.data.repository.SyncResult?, Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val res = smsRepository.syncRealDeviceInbox(scope)
             if (res.isSuccess) {
-                onResult(res.getOrDefault(0), true)
+                onResult(res.getOrNull(), true)
             } else {
-                onResult(0, false)
+                onResult(null, false)
             }
         }
     }

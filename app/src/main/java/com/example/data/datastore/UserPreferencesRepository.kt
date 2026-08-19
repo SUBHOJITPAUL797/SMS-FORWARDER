@@ -27,6 +27,11 @@ class UserPreferencesRepository(private val context: Context) {
         val KEY_USER_EMAIL = stringPreferencesKey("user_email")
         val KEY_USER_UID = stringPreferencesKey("user_uid")
         val KEY_HOST_CODE = stringPreferencesKey("host_code")
+        val KEY_AUTOSTART_CONFIGURED = booleanPreferencesKey("autostart_configured")
+    }
+
+    val isAutoStartConfiguredFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[KEY_AUTOSTART_CONFIGURED] ?: false
     }
 
     val hostCodeFlow: Flow<String?> = dataStore.data.map { preferences ->
@@ -124,6 +129,12 @@ class UserPreferencesRepository(private val context: Context) {
         dataStore.edit { preferences ->
             preferences[KEY_USER_UID] = uid
             preferences[KEY_USER_EMAIL] = email
+        }
+    }
+
+    suspend fun setAutoStartConfigured(configured: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[KEY_AUTOSTART_CONFIGURED] = configured
         }
     }
 

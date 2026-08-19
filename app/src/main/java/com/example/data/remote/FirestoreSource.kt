@@ -303,4 +303,41 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
             Result.failure(e)
         }
     }
+
+    suspend fun deleteSms(hostUid: String, messageId: String): Result<Unit> {
+        return try {
+            firestore.collection(COLLECTION_SMS)
+                .document(hostUid)
+                .collection("messages")
+                .document(messageId)
+                .delete()
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting SMS $messageId from Firestore", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteMultipleSms(hostUid: String, messageIds: List<String>): Result<Unit> {
+        return try {
+            // Firestore batches support up to 500 operations per batch
+            val chunks = messageIds.chunked(450)
+            for (chunk in chunks) {
+                val batch = firestore.batch()
+                for (id in chunk) {
+                    val docRef = firestore.collection(COLLECTION_SMS)
+                        .document(hostUid)
+                        .collection("messages")
+                        .document(id)
+                    batch.delete(docRef)
+                }
+                batch.commit().await()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting multiple SMS from Firestore", e)
+            Result.failure(e)
+        }
+    }
 }
