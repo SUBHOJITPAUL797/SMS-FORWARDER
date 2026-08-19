@@ -72,6 +72,10 @@ class SmsBridgeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SERVICE) {
+            serviceScope.launch {
+                val app = applicationContext as? SmsBridgeApp
+                app?.preferencesRepository?.setServiceActive(false)
+            }
             stopSelf()
             return START_NOT_STICKY
         }
@@ -117,10 +121,6 @@ class SmsBridgeService : Service() {
         Log.d(TAG, "SmsBridgeService onDestroy()")
         wakeLock?.let {
             if (it.isHeld) it.release()
-        }
-        serviceScope.launch {
-            val app = applicationContext as? SmsBridgeApp
-            app?.preferencesRepository?.setServiceActive(false)
         }
         serviceScope.cancel()
         super.onDestroy()
