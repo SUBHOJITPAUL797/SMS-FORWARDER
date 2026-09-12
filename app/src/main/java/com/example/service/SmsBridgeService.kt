@@ -70,6 +70,7 @@ class SmsBridgeService : Service() {
 
             app.preferencesRepository.userRoleFlow.collect { role ->
                 if (role == com.example.domain.model.UserRole.HOST) {
+                    updateServiceNotification("SMS Bridge Host Active", "Listening for incoming forwarded SMS in real time")
                     hostListenerJob?.cancel()
                     hostListenerJob = launch {
                         val hostCode = app.authRepository.getHostCode()
@@ -106,6 +107,7 @@ class SmsBridgeService : Service() {
                         }
                     }
                 } else if (role == com.example.domain.model.UserRole.CLIENT) {
+                    updateServiceNotification("SMS Bridge Client Active", "Monitoring incoming SMS and forwarding in real time")
                     hostListenerJob?.cancel()
                     hostListenerJob = null
                     app.smsRepository.syncAllPendingMessages()
@@ -188,5 +190,28 @@ class SmsBridgeService : Service() {
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+    }
+
+    private fun updateServiceNotification(title: String, text: String) {
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val updated = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.notify(NOTIFICATION_ID, updated)
     }
 }

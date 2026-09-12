@@ -66,6 +66,30 @@ class OtpExtractorTest {
     }
 
     @Test
+    fun extractOtp_mixedWithAmountAndDate() {
+        val body = "SBI: INR 4,500.00 debited for txn on 12-Sep-26. OTP for verification is 849201. Do not share."
+        val result = OtpExtractor.extractOtp(body)
+        assertTrue(result.isOtp)
+        assertEquals("849201", result.otp)
+    }
+
+    @Test
+    fun extractOtp_withMobileNumber() {
+        val body = "Dear user, OTP for your mobile 9876543210 is 492102. Valid for 5 mins."
+        val result = OtpExtractor.extractOtp(body)
+        assertTrue(result.isOtp)
+        assertEquals("492102", result.otp)
+    }
+
+    @Test
+    fun extractOtp_eightDigitOtp() {
+        val body = "Your security code is: 82910482. Use this to login."
+        val result = OtpExtractor.extractOtp(body)
+        assertTrue(result.isOtp)
+        assertEquals("82910482", result.otp)
+    }
+
+    @Test
     fun extractOtp_emptyOrBlank() {
         val r1 = OtpExtractor.extractOtp("")
         val r2 = OtpExtractor.extractOtp(null)

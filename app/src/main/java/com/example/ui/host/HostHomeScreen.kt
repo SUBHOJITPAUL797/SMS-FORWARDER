@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -150,6 +151,45 @@ fun HostHomeScreen(
     var isBatteryOptimized by remember { mutableStateOf(AutoStartPermissionHelper.isBatteryOptimized(context)) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var messageToDeleteSingle by remember { mutableStateOf<String?>(null) }
+
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else true
+        )
+    }
+
+    val notifPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasNotificationPermission = granted
+    }
+
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
+            notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    hasNotificationPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Automatic update check in background on launch
     LaunchedEffect(Unit) {
@@ -457,6 +497,48 @@ fun HostHomeScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Notification Permission Warning Banner (Android 13+)
+                if (!hasNotificationPermission) {
+                    Surface(
+                        color = Color(0xFFFEF3C7),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .clickable {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                    notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Enable Notifications",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFF92400E)
+                                )
+                                Text(
+                                    text = "Tap to allow notifications so you receive instant OTP alerts & full messages.",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFB45309)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Host Code & Connection Banner
                 Surface(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),

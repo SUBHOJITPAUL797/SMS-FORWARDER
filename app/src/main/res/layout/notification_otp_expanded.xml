@@ -110,7 +110,8 @@
             android:textSize="13sp"
             android:lineSpacingExtra="2dp"
             android:textColor="?android:attr/textColorPrimary"
-            android:maxLines="25" />
+            android:maxLines="25"
+            android:ellipsize="end" />
     </LinearLayout>
 
     <!-- Bottom Actions Row -->
