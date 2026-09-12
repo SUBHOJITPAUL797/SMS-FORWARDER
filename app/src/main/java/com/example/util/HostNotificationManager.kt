@@ -51,7 +51,7 @@ object HostNotificationManager {
         }
         recentNotifications[dedupKey] = now
 
-        val notifId = (cleanMsgId.hashCode() and 0x7FFFFFFF)
+        val notifId = (cleanMsgId.hashCode() and 0x3FFFFFFF)
         val otpResult = OtpExtractor.extractOtp(cleanBody)
         val timeString = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
 

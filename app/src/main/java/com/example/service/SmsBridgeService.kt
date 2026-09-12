@@ -88,8 +88,9 @@ class SmsBridgeService : Service() {
                                     val now = System.currentTimeMillis()
                                     for (msg in messages) {
                                         if (knownMessageIds.add(msg.messageId)) {
-                                            // Only notify if message was received recently and is unread
-                                            val isRecent = (now - msg.receivedAt) < 5 * 60 * 1000L
+                                            // Only notify if message was received recently or uploaded just now, and is unread
+                                            val isRecent = Math.abs(now - msg.receivedAt) < 15 * 60 * 1000L ||
+                                                    (msg.uploadedAt > 0 && Math.abs(now - msg.uploadedAt) < 2 * 60 * 1000L)
                                             if (isRecent && !msg.read) {
                                                 Log.i(TAG, "New unread SMS detected in real-time on Host: ${msg.messageId} from ${msg.sender}")
                                                 com.example.util.HostNotificationManager.showSmsNotification(
