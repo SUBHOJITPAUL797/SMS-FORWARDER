@@ -99,6 +99,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- Notification Action Receiver for 1-Tap Copy OTP, Copy SMS, Mark Read, Dismiss -->
+        <receiver
+            android:name=".receiver.NotificationActionReceiver"
+            android:exported="false" />
+
         <!-- FCM Push Notification Service -->
         <service
             android:name=".service.SmsBridgeFcmService"

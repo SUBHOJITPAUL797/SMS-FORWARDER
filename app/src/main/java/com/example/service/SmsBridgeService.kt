@@ -37,6 +37,7 @@ class SmsBridgeService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var wakeLock: PowerManager.WakeLock? = null
+    private var hostListenerJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -62,11 +63,54 @@ class SmsBridgeService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // 3. Record service active in preferences and sync pending queue
+        // 3. Record service active in preferences and handle role-specific monitoring
         serviceScope.launch {
-            val app = applicationContext as? SmsBridgeApp
-            app?.preferencesRepository?.setServiceActive(true)
-            app?.smsRepository?.syncAllPendingMessages()
+            val app = applicationContext as? SmsBridgeApp ?: return@launch
+            app.preferencesRepository.setServiceActive(true)
+
+            app.preferencesRepository.userRoleFlow.collect { role ->
+                if (role == com.example.domain.model.UserRole.HOST) {
+                    hostListenerJob?.cancel()
+                    hostListenerJob = launch {
+                        val hostCode = app.authRepository.getHostCode()
+                        if (hostCode.isNotEmpty()) {
+                            Log.i(TAG, "Host mode active ($hostCode). Starting real-time Firestore SMS listener...")
+                            var initialLoadComplete = false
+                            val knownMessageIds = mutableSetOf<String>()
+
+                            app.smsRepository.observeHostSmsList(hostCode).collect { messages ->
+                                if (!initialLoadComplete) {
+                                    messages.forEach { knownMessageIds.add(it.messageId) }
+                                    initialLoadComplete = true
+                                    Log.d(TAG, "Host listener initialized with ${messages.size} existing messages.")
+                                } else {
+                                    val now = System.currentTimeMillis()
+                                    for (msg in messages) {
+                                        if (knownMessageIds.add(msg.messageId)) {
+                                            // Only notify if message was received recently and is unread
+                                            val isRecent = (now - msg.receivedAt) < 5 * 60 * 1000L
+                                            if (isRecent && !msg.read) {
+                                                Log.i(TAG, "New unread SMS detected in real-time on Host: ${msg.messageId} from ${msg.sender}")
+                                                com.example.util.HostNotificationManager.showSmsNotification(
+                                                    context = this@SmsBridgeService,
+                                                    sender = msg.sender,
+                                                    body = msg.body,
+                                                    messageId = msg.messageId,
+                                                    hostCode = hostCode
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (role == com.example.domain.model.UserRole.CLIENT) {
+                    hostListenerJob?.cancel()
+                    hostListenerJob = null
+                    app.smsRepository.syncAllPendingMessages()
+                }
+            }
         }
     }
 

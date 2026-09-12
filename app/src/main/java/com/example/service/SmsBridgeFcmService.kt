@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.SmsBridgeApp
+import com.example.util.HostNotificationManager
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
@@ -56,37 +57,17 @@ class SmsBridgeFcmService : FirebaseMessagingService() {
         // Emit to local shared flow for in-app reaction
         _newSmsEvents.tryEmit(data)
 
-        // Show push notification
-        showNotification(sender, body, msgId)
-    }
-
-    private fun showNotification(sender: String, body: String, msgId: String) {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("extra_msg_id", msgId)
-            putExtra("extra_open_host", true)
+        // Show Truecaller-styled rich notification with smart OTP extraction
+        serviceScope.launch {
+            val app = applicationContext as? SmsBridgeApp
+            val hostCode = app?.authRepository?.getHostCode() ?: ""
+            HostNotificationManager.showSmsNotification(
+                context = this@SmsBridgeFcmService,
+                sender = sender,
+                body = body,
+                messageId = msgId,
+                hostCode = hostCode
+            )
         }
-
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            System.currentTimeMillis().toInt(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
-        val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("📩 $sender")
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setAutoCancel(true)
-            .setSound(defaultSoundUri)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
     }
 }

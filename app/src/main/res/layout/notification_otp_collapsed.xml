@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
+
+    <!-- Header / Sender line -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/notif_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="OTP from 59029411"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorPrimary"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/notif_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="now"
+            android:textSize="11sp"
+            android:textColor="?android:attr/textColorSecondary" />
+    </LinearLayout>
+
+    <!-- OTP Display Row with Copy button beside it -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginTop="4dp">
+
+        <!-- OTP Spaced Number Display -->
+        <TextView
+            android:id="@+id/notif_otp_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="5  2  9  7  5  7"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="#2563EB"
+            android:letterSpacing="0.1"
+            android:maxLines="1" />
+
+        <!-- Copy Button Beside OTP -->
+        <LinearLayout
+            android:id="@+id/btn_copy_otp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_copy_button"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:src="@drawable/ic_copy"
+                android:contentDescription="Copy OTP" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="Copy"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#2563EB" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Brief Message Preview -->
+    <TextView
+        android:id="@+id/notif_preview_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:text="Your verification code..."
+        android:textSize="12sp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+</LinearLayout>

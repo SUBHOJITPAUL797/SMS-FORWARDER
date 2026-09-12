@@ -159,6 +159,22 @@ fun HostHomeScreen(
         }
     }
 
+    // Ensure persistent real-time listener service is active on Host
+    LaunchedEffect(Unit) {
+        try {
+            val serviceIntent = android.content.Intent(context, com.example.service.SmsBridgeService::class.java).apply {
+                putExtra("role_key", com.example.domain.model.UserRole.HOST.key)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("HostHomeScreen", "Failed to start SmsBridgeService for Host", e)
+        }
+    }
+
     if (availableUpdate != null) {
         InAppUpdateDialog(
             updateInfo = availableUpdate!!,
