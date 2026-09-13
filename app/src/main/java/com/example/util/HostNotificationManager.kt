@@ -152,9 +152,6 @@ object HostNotificationManager {
                 copyOtpPendingIntent?.let {
                     setOnClickPendingIntent(R.id.btn_copy_otp, it)
                 }
-                setOnClickPendingIntent(R.id.btn_action_read, markReadPendingIntent)
-                setOnClickPendingIntent(R.id.btn_action_dismiss, dismissPendingIntent)
-                setOnClickPendingIntent(R.id.btn_action_copy_sms, copySmsPendingIntent)
             }
         } else {
             // Normal Collapsed View
@@ -169,10 +166,6 @@ object HostNotificationManager {
                 setTextViewText(R.id.notif_title, title)
                 setTextViewText(R.id.notif_time, timeString)
                 setTextViewText(R.id.notif_full_body, cleanBody)
-
-                setOnClickPendingIntent(R.id.btn_action_copy_sms, copySmsPendingIntent)
-                setOnClickPendingIntent(R.id.btn_action_read, markReadPendingIntent)
-                setOnClickPendingIntent(R.id.btn_action_dismiss, dismissPendingIntent)
             }
         }
 

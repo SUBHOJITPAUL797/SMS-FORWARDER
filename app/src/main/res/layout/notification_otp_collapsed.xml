@@ -23,7 +23,7 @@
             android:text="OTP from 59029411"
             android:textSize="14sp"
             android:textStyle="bold"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/notif_text_primary"
             android:maxLines="1"
             android:ellipsize="end" />
 
@@ -33,7 +33,7 @@
             android:layout_height="wrap_content"
             android:text="now"
             android:textSize="11sp"
-            android:textColor="?android:attr/textColorSecondary" />
+            android:textColor="@color/notif_text_secondary" />
     </LinearLayout>
 
     <!-- OTP Display Row with Copy button beside it -->
@@ -53,7 +53,7 @@
             android:text="5  2  9  7  5  7"
             android:textSize="22sp"
             android:textStyle="bold"
-            android:textColor="#2563EB"
+            android:textColor="@color/notif_otp_text"
             android:letterSpacing="0.1"
             android:maxLines="1" />
 
@@ -85,7 +85,7 @@
                 android:text="Copy"
                 android:textSize="13sp"
                 android:textStyle="bold"
-                android:textColor="#2563EB" />
+                android:textColor="@color/notif_copy_btn_text" />
         </LinearLayout>
     </LinearLayout>
 
@@ -97,7 +97,7 @@
         android:layout_marginTop="3dp"
         android:text="Your verification code..."
         android:textSize="12sp"
-        android:textColor="?android:attr/textColorSecondary"
+        android:textColor="@color/notif_text_secondary"
         android:maxLines="1"
         android:ellipsize="end" />
 

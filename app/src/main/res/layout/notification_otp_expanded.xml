@@ -6,7 +6,7 @@
     android:paddingStart="4dp"
     android:paddingEnd="4dp"
     android:paddingTop="2dp"
-    android:paddingBottom="4dp">
+    android:paddingBottom="2dp">
 
     <!-- Header / Sender line -->
     <LinearLayout
@@ -23,7 +23,7 @@
             android:text="OTP from 59029411"
             android:textSize="14sp"
             android:textStyle="bold"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/notif_text_primary"
             android:maxLines="1"
             android:ellipsize="end" />
 
@@ -33,10 +33,10 @@
             android:layout_height="wrap_content"
             android:text="now"
             android:textSize="11sp"
-            android:textColor="?android:attr/textColorSecondary" />
+            android:textColor="@color/notif_text_secondary" />
     </LinearLayout>
 
-    <!-- Prominent OTP Row with Copy Button Beside It -->
+    <!-- Prominent OTP Row with Quick 1-Tap Copy Action Beside It -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -53,7 +53,7 @@
             android:text="5  2  9  7  5  7"
             android:textSize="24sp"
             android:textStyle="bold"
-            android:textColor="#2563EB"
+            android:textColor="@color/notif_otp_text"
             android:letterSpacing="0.1"
             android:maxLines="1" />
 
@@ -85,87 +85,33 @@
                 android:text="Copy"
                 android:textSize="13sp"
                 android:textStyle="bold"
-                android:textColor="#2563EB" />
+                android:textColor="@color/notif_copy_btn_text" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Boxy Full Message Container -->
+    <!-- Boxy Full Message Container with High Contrast in Light & Dark Mode -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@drawable/bg_notification_box"
-        android:paddingStart="10dp"
-        android:paddingEnd="10dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
         android:layout_marginTop="2dp"
-        android:layout_marginBottom="8dp">
+        android:layout_marginBottom="2dp">
 
         <TextView
             android:id="@+id/notif_full_body"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Full message content will display here completely so the user does not need to open the app."
-            android:textSize="13sp"
-            android:lineSpacingExtra="2dp"
-            android:textColor="?android:attr/textColorPrimary"
-            android:maxLines="25"
+            android:textSize="13.5sp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/notif_text_primary"
+            android:maxLines="30"
             android:ellipsize="end" />
-    </LinearLayout>
-
-    <!-- Bottom Actions Row -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical|start"
-        android:layout_marginTop="2dp">
-
-        <TextView
-            android:id="@+id/btn_action_read"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Mark as read"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:textColor="#2563EB"
-            android:paddingStart="6dp"
-            android:paddingEnd="12dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:clickable="true"
-            android:focusable="true" />
-
-        <TextView
-            android:id="@+id/btn_action_dismiss"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Dismiss"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:textColor="#2563EB"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:clickable="true"
-            android:focusable="true" />
-
-        <TextView
-            android:id="@+id/btn_action_copy_sms"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Copy SMS"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:textColor="#6B7280"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:clickable="true"
-            android:focusable="true" />
     </LinearLayout>
 
 </LinearLayout>
