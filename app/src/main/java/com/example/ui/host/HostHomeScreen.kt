@@ -43,8 +43,10 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
+import com.example.util.OtpExtractor
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -831,9 +833,16 @@ fun HostHomeScreen(
                                 onDelete = { messageToDeleteSingle = msg.messageId },
                                 onCopy = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("SMS Body", msg.body)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "Copied SMS to clipboard", Toast.LENGTH_SHORT).show()
+                                    val otpResult = OtpExtractor.extractOtp(msg.body)
+                                    if (otpResult.isOtp) {
+                                        val clip = ClipData.newPlainText("OTP", otpResult.otp)
+                                        clipboard.setPrimaryClip(clip)
+                                        Toast.makeText(context, "Copied OTP: ${otpResult.otp}", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val clip = ClipData.newPlainText("SMS Body", msg.body)
+                                        clipboard.setPrimaryClip(clip)
+                                        Toast.makeText(context, "Copied SMS to clipboard", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             )
                         }
@@ -1001,6 +1010,67 @@ private fun SmsCardItem(
                     overflow = TextOverflow.Ellipsis,
                     lineHeight = 20.sp
                 )
+
+                // Prominent OTP Container if message contains OTP / verification code
+                val itemContext = androidx.compose.ui.platform.LocalContext.current
+                val otpResult = remember(message.body) { OtpExtractor.extractOtp(message.body) }
+                if (otpResult.isOtp) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF7C3AED).copy(alpha = 0.10f),
+                        border = BorderStroke(1.dp, Color(0xFF7C3AED).copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "OTP",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF7C3AED)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = otpResult.formattedOtp,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 1.2.sp,
+                                    color = Color(0xFF6D28D9)
+                                )
+                            }
+                            FilledTonalButton(
+                                onClick = {
+                                    val clipboard = itemContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("OTP", otpResult.otp)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(itemContext, "Copied OTP: ${otpResult.otp}", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = Color(0xFF7C3AED),
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy OTP",
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Copy OTP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 

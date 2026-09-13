@@ -94,8 +94,51 @@ class OtpExtractorTest {
         val r1 = OtpExtractor.extractOtp("")
         val r2 = OtpExtractor.extractOtp(null)
         val r3 = OtpExtractor.extractOtp("Hello, how are you doing today?")
+        val r4 = OtpExtractor.extractOtp("Call me at +918927408840")
         assertFalse(r1.isOtp)
         assertFalse(r2.isOtp)
         assertFalse(r3.isOtp)
+        assertFalse(r4.isOtp)
+    }
+
+    @Test
+    fun extractOtp_userSpecificMessageWithTopTypo() {
+        val body = "hi your top is this 456789"
+        val result = OtpExtractor.extractOtp(body)
+        assertTrue(result.isOtp)
+        assertEquals("456789", result.otp)
+        assertEquals("4  5  6  7  8  9", result.formattedOtp)
+    }
+
+    @Test
+    fun extractOtp_userSpecificMessageStandaloneSixDigits() {
+        val body = "hi 456456"
+        val result = OtpExtractor.extractOtp(body)
+        assertTrue(result.isOtp)
+        assertEquals("456456", result.otp)
+        assertEquals("4  5  6  4  5  6", result.formattedOtp)
+    }
+
+    @Test
+    fun extractOtp_pureDigits() {
+        val body = "456456"
+        val result = OtpExtractor.extractOtp(body)
+        assertTrue(result.isOtp)
+        assertEquals("456456", result.otp)
+    }
+
+    @Test
+    fun extractOtp_topSuffixAndPrefixVariants() {
+        val r1 = OtpExtractor.extractOtp("456789 is your top")
+        assertTrue(r1.isOtp)
+        assertEquals("456789", r1.otp)
+
+        val r2 = OtpExtractor.extractOtp("top: 456789")
+        assertTrue(r2.isOtp)
+        assertEquals("456789", r2.otp)
+
+        val r3 = OtpExtractor.extractOtp("your top 456789")
+        assertTrue(r3.isOtp)
+        assertEquals("456789", r3.otp)
     }
 }

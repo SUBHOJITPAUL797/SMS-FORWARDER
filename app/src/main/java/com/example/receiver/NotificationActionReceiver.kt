@@ -11,6 +11,7 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.example.SmsBridgeApp
+import com.example.util.OtpExtractor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -49,8 +50,14 @@ class NotificationActionReceiver : BroadcastReceiver() {
             ACTION_COPY_SMS -> {
                 val body = intent.getStringExtra(EXTRA_BODY) ?: ""
                 if (body.isNotBlank()) {
-                    copyToClipboard(context, "SMS", body)
-                    showToast(context, "Message copied to clipboard")
+                    val otpRes = OtpExtractor.extractOtp(body)
+                    if (otpRes.isOtp) {
+                        copyToClipboard(context, "OTP", otpRes.otp)
+                        showToast(context, "Copied OTP: ${otpRes.otp}")
+                    } else {
+                        copyToClipboard(context, "SMS", body)
+                        showToast(context, "Message copied to clipboard")
+                    }
                 }
             }
 

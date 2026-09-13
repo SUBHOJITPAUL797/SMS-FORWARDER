@@ -10,29 +10,31 @@ data class OtpResult(
 
 object OtpExtractor {
 
-    // Regex for checking if text relates to verification / OTP
+    // Regex for checking if text relates to verification / OTP (includes common typos like 'top')
     private val OTP_KEYWORD_PATTERN = Pattern.compile(
-        "(?i)\\b(otp|code|verification|verify|pin|password|passcode|secret|one[- ]?time|tac|v-code|auth|valid\\s+for)\\b"
+        "(?i)\\b(otp|top|o[.-]?t[.-]?p|t[.-]?o[.-]?p|code|kod|verification|verify|verif|pin|password|passcode|pass|secret|one[- ]?time|tac|v-code|auth|2fa|mfa|valid\\s+for)\\b"
     )
 
-    // Pattern 1: Explicit keyword followed by number (e.g. "OTP is 529757", "code: 123456", "PIN is 8291")
+    // Pattern 1: Keyword followed by number within up to 35 chars
+    // e.g. "OTP is 529757", "your top is this 456789", "code: 123456", "PIN is 8291", "verification code is 492019"
     private val PREFIX_PATTERN = Pattern.compile(
-        "(?i)(?:otp|code|pin|verification(?:\\s+code)?|password|passcode|secret|tac|auth|v-code)(?:\\s+(?:is|for|to|as))?[\\s:=#-]+([0-9]{4,8})\\b"
+        "(?i)\\b(?:otp|top|o[.-]?t[.-]?p|t[.-]?o[.-]?p|code|kod|pin|verification(?:\\s+code)?|password|passcode|pass|secret|tac|auth|v-code|2fa)\\b[^0-9\\r\\n]{0,35}?([0-9]{4,8})\\b"
     )
 
-    // Pattern 2: Number followed by keyword (e.g. "529757 is your OTP", "492019 is the verification code")
+    // Pattern 2: Number followed by keyword within up to 35 chars
+    // e.g. "529757 is your OTP", "456789 is your top", "492019 is the verification code"
     private val SUFFIX_PATTERN = Pattern.compile(
-        "\\b([0-9]{4,8})\\b\\s*(?:is\\s+(?:your|the)?\\s*)?(?i)(?:otp|code|pin|verification(?:\\s+code)?|password|passcode|secret|one[- ]?time)"
+        "\\b([0-9]{4,8})\\b[^0-9\\r\\n]{0,35}?(?i)\\b(?:otp|top|o[.-]?t[.-]?p|t[.-]?o[.-]?p|code|kod|pin|verification(?:\\s+code)?|password|passcode|secret|one[- ]?time)\\b"
     )
 
-    // Pattern 3: Standard prefix formats like G-482910 or VK-123456
+    // Pattern 3: Standard service prefix formats like G-482910 or VK-123456
     private val SERVICE_PREFIX_PATTERN = Pattern.compile(
         "\\b[A-Za-z]-([0-9]{4,8})\\b"
     )
 
     // Pattern 4: "Use 123456 to verify/login"
     private val USE_CODE_PATTERN = Pattern.compile(
-        "(?i)\\b(?:use|enter|with)\\s+([0-9]{4,8})\\s+(?:to|for|as)\\b"
+        "(?i)\\b(?:use|enter|with)\\s+([0-9]{4,8})\\b"
     )
 
     // General 4-8 digit standalone number
@@ -40,13 +42,17 @@ object OtpExtractor {
         "\\b([0-9]{4,8})\\b"
     )
 
-    // Disqualification patterns for amounts, accounts, dates
+    // Disqualification patterns for amounts, accounts, dates, pincodes
     private val CURRENCY_PRECEDING_PATTERN = Pattern.compile(
-        "(?i)(?:rs\\.?|inr|₹|\\$|usd|eur|aud|gbp|amount|debited|credited|balance)[\\s:]*$"
+        "(?i)(?:rs\\.?|inr|₹|\\$|usd|eur|aud|gbp|amount|debited|credited|balance|paid|spent)[\\s:]*$"
     )
 
     private val ACCOUNT_PRECEDING_PATTERN = Pattern.compile(
-        "(?i)(?:a/c|acct|account|card|ending(?:\\s+with)?)[\\s:]*$"
+        "(?i)(?:a/c|acct|account|card|ending(?:\\s+with)?|ending\\s+in|xx|xx\\*)[\\s:]*$"
+    )
+
+    private val PINCODE_PRECEDING_PATTERN = Pattern.compile(
+        "(?i)(?:pin\\s*code|pincode|zip\\s*code|zip|postal)[\\s:]*$"
     )
 
     fun extractOtp(messageBody: String?): OtpResult {
@@ -56,7 +62,7 @@ object OtpExtractor {
 
         val cleanBody = messageBody.trim()
 
-        // 1. Try Prefix Pattern (e.g. "OTP is 529757", "Verification code: 492019")
+        // 1. Try Prefix Pattern (e.g. "OTP is 529757", "your top is this 456789")
         val prefixMatcher = PREFIX_PATTERN.matcher(cleanBody)
         if (prefixMatcher.find()) {
             val code = prefixMatcher.group(1)
@@ -65,7 +71,7 @@ object OtpExtractor {
             }
         }
 
-        // 2. Try Suffix Pattern (e.g. "529757 is your OTP")
+        // 2. Try Suffix Pattern (e.g. "529757 is your OTP", "456789 is your top")
         val suffixMatcher = SUFFIX_PATTERN.matcher(cleanBody)
         if (suffixMatcher.find()) {
             val code = suffixMatcher.group(1)
@@ -92,7 +98,7 @@ object OtpExtractor {
             }
         }
 
-        // 5. Fallback: If the message contains OTP keywords, find any standalone 4-8 digit number
+        // 5. If message contains OTP keywords, find any valid standalone 4-8 digit number
         if (OTP_KEYWORD_PATTERN.matcher(cleanBody).find()) {
             val standaloneMatcher = STANDALONE_NUMBER_PATTERN.matcher(cleanBody)
             while (standaloneMatcher.find()) {
@@ -104,25 +110,50 @@ object OtpExtractor {
             }
         }
 
+        // 6. Fallback for casual / standalone verification numbers (e.g. "hi 456456", "456456")
+        val standaloneMatcher = STANDALONE_NUMBER_PATTERN.matcher(cleanBody)
+        val candidates = mutableListOf<String>()
+        while (standaloneMatcher.find()) {
+            val candidate = standaloneMatcher.group(1)
+            val start = standaloneMatcher.start(1)
+            if (candidate != null && isValidOtpCode(candidate, cleanBody, start)) {
+                candidates.add(candidate)
+            }
+        }
+
+        if (candidates.isNotEmpty()) {
+            // Prioritize standard 6-digit OTPs
+            val sixDigit = candidates.firstOrNull { it.length == 6 }
+            if (sixDigit != null) {
+                return buildResult(sixDigit)
+            }
+            // If message is short (e.g. casual text <= 120 chars) and has exactly 1 candidate
+            if (candidates.size == 1 && cleanBody.length <= 120) {
+                return buildResult(candidates.first())
+            }
+        }
+
         return OtpResult(otp = "", formattedOtp = "", isOtp = false)
     }
 
     private fun isValidOtpCode(code: String?, text: String, startIdx: Int): Boolean {
         if (code == null || code.length !in 4..8) return false
 
-        // Filter out obvious years (2020..2035) if exactly 4 digits
+        // Filter out obvious years (2020..2035) if exactly 4 digits unless explicitly accompanied by otp/pin/code
         if (code.length == 4) {
             val yearVal = code.toIntOrNull()
             if (yearVal != null && yearVal in 2020..2035) {
-                // Only consider as OTP if explicitly preceded by "otp" or "pin"
-                val preceding50 = text.substring(maxOf(0, startIdx - 30), startIdx).lowercase()
-                if (!preceding50.contains("otp") && !preceding50.contains("pin") && !preceding50.contains("code")) {
+                val surrounding = text.substring(
+                    maxOf(0, startIdx - 30),
+                    minOf(text.length, startIdx + code.length + 30)
+                ).lowercase()
+                if (!surrounding.contains("otp") && !surrounding.contains("top") && !surrounding.contains("pin") && !surrounding.contains("code")) {
                     return false
                 }
             }
         }
 
-        // Check text immediately before this number for currency or account signs
+        // Check text immediately before this number for currency, account, or pincode signs
         val precedingSnippet = text.substring(maxOf(0, startIdx - 20), startIdx).trim()
         if (CURRENCY_PRECEDING_PATTERN.matcher(precedingSnippet).find()) {
             return false
@@ -130,14 +161,33 @@ object OtpExtractor {
         if (ACCOUNT_PRECEDING_PATTERN.matcher(precedingSnippet).find()) {
             return false
         }
+        if (PINCODE_PRECEDING_PATTERN.matcher(precedingSnippet).find()) {
+            return false
+        }
 
-        // Check if immediately followed by decimals (e.g. 5000.00)
+        // Check if preceded or followed by time/date colon or slashes (e.g. "14:15" or "12/09/2026")
+        if (startIdx > 0 && (text[startIdx - 1] == ':' || text[startIdx - 1] == '/')) {
+            return false
+        }
         val endIdx = startIdx + code.length
+        if (endIdx < text.length && (text[endIdx] == ':' || text[endIdx] == '/')) {
+            return false
+        }
+
+        // Check if followed by decimals (e.g. 5000.00)
         if (endIdx < text.length && text[endIdx] == '.') {
             val next2 = text.substring(endIdx, minOf(text.length, endIdx + 3))
             if (next2.matches(Regex("\\.\\d{2}"))) {
                 return false
             }
+        }
+
+        // Check if immediately followed by currency symbols (e.g. 500/-, 5000 inr)
+        val succeedingSnippet = text.substring(endIdx, minOf(text.length, endIdx + 15)).trim().lowercase()
+        if (succeedingSnippet.startsWith("/-") || succeedingSnippet.startsWith("/=") ||
+            succeedingSnippet.startsWith("inr") || succeedingSnippet.startsWith("rs") ||
+            succeedingSnippet.startsWith("₹") || succeedingSnippet.startsWith("$")) {
+            return false
         }
 
         return true
