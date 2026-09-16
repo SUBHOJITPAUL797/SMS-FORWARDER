@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/floating_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp">
+
+    <!-- Card Wrapper -->
+    <LinearLayout
+        android:id="@+id/floating_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_floating_card"
+        android:elevation="10dp">
+
+        <!-- Top Header Banner (Emerald Green) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_floating_header"
+            android:paddingStart="12dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="9dp"
+            android:paddingBottom="9dp">
+
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:src="@drawable/ic_notification"
+                android:tint="#FFFFFF"
+                android:contentDescription="SMS Bridge" />
+
+            <TextView
+                android:id="@+id/tv_floating_sender"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Centru Bank"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tv_floating_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:text="SMS · 12:30"
+                android:textColor="#D1FAE5"
+                android:textSize="11sp" />
+
+            <!-- Close Button "✕" -->
+            <ImageView
+                android:id="@+id/btn_floating_close"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:padding="5dp"
+                android:src="@drawable/ic_close"
+                android:tint="#FFFFFF"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Close"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <!-- Card Body -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="14dp">
+
+            <!-- OTP Digits (Centered, Large, Bold, Spaced) -->
+            <TextView
+                android:id="@+id/tv_floating_otp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="8  8  1    2  3  1"
+                android:textColor="@color/notif_otp_text"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.12"
+                android:maxLines="1" />
+
+            <!-- Warning / Subtitle -->
+            <TextView
+                android:id="@+id/tv_floating_subtext"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:text="Don't share your OTP with anyone"
+                android:textColor="@color/notif_text_secondary"
+                android:textSize="12sp"
+                android:maxLines="1" />
+
+            <!-- Full-width COPY OTP Action Button -->
+            <LinearLayout
+                android:id="@+id/btn_floating_copy"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:background="@drawable/bg_floating_copy_btn"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_copy"
+                    android:tint="#065F46"
+                    android:contentDescription="Copy" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="COPY OTP"
+                    android:textColor="#065F46"
+                    android:textSize="13.5sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.06" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</LinearLayout>

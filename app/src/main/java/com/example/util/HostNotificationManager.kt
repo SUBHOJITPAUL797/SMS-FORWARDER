@@ -10,8 +10,11 @@ import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.SmsBridgeApp
 import com.example.receiver.NotificationActionReceiver
 import com.example.service.SmsBridgeFcmService
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Collections
 import java.util.Date
@@ -59,6 +62,28 @@ object HostNotificationManager {
             "OTP from $cleanSender"
         } else {
             "📩 $cleanSender"
+        }
+
+        // Optional Truecaller-style Floating OTP Overlay Window
+        if (otpResult.isOtp) {
+            try {
+                val app = context.applicationContext as? SmsBridgeApp
+                val prefs = app?.preferencesRepository ?: SmsBridgeApp.instance.preferencesRepository
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    val isFloatingEnabled = prefs.isFloatingOtpEnabledFlow.firstOrNull() ?: false
+                    if (isFloatingEnabled && FloatingOtpManager.canDrawOverlays(context)) {
+                        FloatingOtpManager.showFloatingOtp(
+                            context = context,
+                            sender = cleanSender,
+                            otp = otpResult.otp,
+                            formattedOtp = otpResult.formattedOtp,
+                            timeString = timeString
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch floating OTP overlay", e)
+            }
         }
 
         // 1. Content PendingIntent (tapping opens Host screen in MainActivity)

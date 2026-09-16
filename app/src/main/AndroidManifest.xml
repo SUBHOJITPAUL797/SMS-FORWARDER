@@ -30,6 +30,9 @@
     <!-- In-App APK Updates -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Floating OTP Window Overlay (Truecaller Style) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <application
         android:name=".SmsBridgeApp"
         android:allowBackup="true"

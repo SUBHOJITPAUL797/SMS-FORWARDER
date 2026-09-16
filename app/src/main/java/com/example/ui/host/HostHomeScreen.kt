@@ -119,9 +119,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.FlipToFront
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import com.example.util.AutoStartPermissionHelper
+import com.example.util.FloatingOtpManager
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -141,6 +145,7 @@ fun HostHomeScreen(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val isAutoStartConfigured by viewModel.isAutoStartConfigured.collectAsStateWithLifecycle()
+    val isFloatingOtpEnabled by viewModel.isFloatingOtpEnabled.collectAsStateWithLifecycle()
     val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedMessageIds by viewModel.selectedMessageIds.collectAsStateWithLifecycle()
 
@@ -153,6 +158,8 @@ fun HostHomeScreen(
     var isBatteryOptimized by remember { mutableStateOf(AutoStartPermissionHelper.isBatteryOptimized(context)) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var messageToDeleteSingle by remember { mutableStateOf<String?>(null) }
+    var showOverlayPermissionDialog by remember { mutableStateOf(false) }
+    var hasOverlayPermission by remember { mutableStateOf(FloatingOtpManager.canDrawOverlays(context)) }
 
     var hasNotificationPermission by remember {
         mutableStateOf(
@@ -181,6 +188,11 @@ fun HostHomeScreen(
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                hasOverlayPermission = FloatingOtpManager.canDrawOverlays(context)
+                if (hasOverlayPermission && showOverlayPermissionDialog) {
+                    showOverlayPermissionDialog = false
+                    viewModel.setFloatingOtpEnabled(true)
+                }
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                     hasNotificationPermission = androidx.core.content.ContextCompat.checkSelfPermission(
                         context,
@@ -279,6 +291,36 @@ fun HostHomeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { messageToDeleteSingle = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Permission Dialog for Display Over Other Apps
+    if (showOverlayPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showOverlayPermissionDialog = false },
+            title = { Text("Display Over Other Apps", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "To show Truecaller-style floating OTP popups over other apps when SMS arrives, Android requires the 'Display over other apps' permission. Tap 'Open Settings' to grant it.",
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showOverlayPermissionDialog = false
+                        FloatingOtpManager.openOverlaySettings(context)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                ) {
+                    Text("Open Settings", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOverlayPermissionDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -710,6 +752,126 @@ fun HostHomeScreen(
                                     tint = Color(0xFFB45309),
                                     modifier = Modifier.size(16.dp)
                                 )
+                            }
+                        }
+                    }
+                }
+
+                // Truecaller-Style Floating OTP Overlay Option Card
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isFloatingOtpEnabled) Color(0xFFECFDF5) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isFloatingOtpEnabled) Color(0xFF10B981).copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .background(
+                                        if (isFloatingOtpEnabled) Color(0xFFD1FAE5) else MaterialTheme.colorScheme.surfaceVariant,
+                                        CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FlipToFront,
+                                    contentDescription = null,
+                                    tint = if (isFloatingOtpEnabled) Color(0xFF059669) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Floating OTP Popup (Truecaller Style)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isFloatingOtpEnabled) Color(0xFF065F46) else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Pop up a 1-tap copy card on your screen when an OTP arrives.",
+                                    fontSize = 11.5.sp,
+                                    color = if (isFloatingOtpEnabled) Color(0xFF047857) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Switch(
+                                checked = isFloatingOtpEnabled,
+                                onCheckedChange = { enable ->
+                                    if (enable) {
+                                        if (!FloatingOtpManager.canDrawOverlays(context)) {
+                                            showOverlayPermissionDialog = true
+                                        } else {
+                                            viewModel.setFloatingOtpEnabled(true)
+                                            Toast.makeText(context, "Floating OTP overlay enabled", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        viewModel.setFloatingOtpEnabled(false)
+                                        Toast.makeText(context, "Floating OTP overlay disabled", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF10B981)
+                                )
+                            )
+                        }
+
+                        if (isFloatingOtpEnabled) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = if (hasOverlayPermission) "Active · Displays over all apps" else "⚠️ Permission required",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (hasOverlayPermission) Color(0xFF059669) else Color(0xFFDC2626)
+                                )
+
+                                OutlinedButton(
+                                    onClick = {
+                                        if (!FloatingOtpManager.canDrawOverlays(context)) {
+                                            showOverlayPermissionDialog = true
+                                        } else {
+                                            FloatingOtpManager.showFloatingOtp(
+                                                context = context,
+                                                sender = "Centru Bank",
+                                                otp = "881231",
+                                                formattedOtp = "8 8 1   2 3 1",
+                                                timeString = "12:30 PM"
+                                            )
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = Color(0xFF059669)
+                                    ),
+                                    border = BorderStroke(1.dp, Color(0xFF10B981)),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("Test Popup", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }

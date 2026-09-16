@@ -28,6 +28,11 @@ class UserPreferencesRepository(private val context: Context) {
         val KEY_USER_UID = stringPreferencesKey("user_uid")
         val KEY_HOST_CODE = stringPreferencesKey("host_code")
         val KEY_AUTOSTART_CONFIGURED = booleanPreferencesKey("autostart_configured")
+        val KEY_FLOATING_OTP_ENABLED = booleanPreferencesKey("floating_otp_enabled")
+    }
+
+    val isFloatingOtpEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[KEY_FLOATING_OTP_ENABLED] ?: false
     }
 
     val isAutoStartConfiguredFlow: Flow<Boolean> = dataStore.data.map { preferences ->
@@ -135,6 +140,12 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setAutoStartConfigured(configured: Boolean) {
         dataStore.edit { preferences ->
             preferences[KEY_AUTOSTART_CONFIGURED] = configured
+        }
+    }
+
+    suspend fun setFloatingOtpEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[KEY_FLOATING_OTP_ENABLED] = enabled
         }
     }
 

@@ -113,6 +113,16 @@ class HostViewModel(
         }
     }
 
+    val isFloatingOtpEnabled: StateFlow<Boolean> = com.example.SmsBridgeApp.instance.preferencesRepository
+        .isFloatingOtpEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun setFloatingOtpEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            com.example.SmsBridgeApp.instance.preferencesRepository.setFloatingOtpEnabled(enabled)
+        }
+    }
+
     // Lazy Loading Pagination State
     private val _displayLimit = MutableStateFlow(25)
     val displayLimit: StateFlow<Int> = _displayLimit.asStateFlow()
