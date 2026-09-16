@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.GestureDetector
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -20,9 +21,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import com.example.R
-import com.example.SmsBridgeApp
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.runBlocking
+import kotlin.math.abs
 
 object FloatingOtpManager {
 
@@ -88,7 +87,8 @@ object FloatingOtpManager {
 
         mainHandler.post {
             try {
-                dismiss() // Remove existing overlay if any
+                // Synchronously clean up any prior overlay on the main thread
+                dismissInternal()
 
                 val appContext = context.applicationContext
                 val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
@@ -97,29 +97,69 @@ object FloatingOtpManager {
                 val inflater = LayoutInflater.from(appContext)
                 val view = inflater.inflate(R.layout.layout_floating_otp, null)
 
+                val tvInitial = view.findViewById<TextView>(R.id.tv_floating_initial)
                 val tvSender = view.findViewById<TextView>(R.id.tv_floating_sender)
                 val tvTime = view.findViewById<TextView>(R.id.tv_floating_time)
                 val tvOtp = view.findViewById<TextView>(R.id.tv_floating_otp)
                 val btnClose = view.findViewById<ImageView>(R.id.btn_floating_close)
                 val btnCopy = view.findViewById<View>(R.id.btn_floating_copy)
+                val rootLayout = view.findViewById<View>(R.id.floating_root)
+                val cardLayout = view.findViewById<View>(R.id.floating_card)
 
-                tvSender.text = sender.ifBlank { "SMS Bridge" }
-                tvTime.text = if (timeString.startsWith("SMS")) timeString else "SMS · $timeString"
+                // 1. Configure Header & Sender details
+                val cleanSender = sender.ifBlank { "SMS Bridge" }
+                tvSender.text = cleanSender
+                tvInitial.text = cleanSender.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "S"
+
+                val formattedTime = if (timeString.startsWith("SMS")) timeString else "SMS · $timeString"
+                tvTime.text = formattedTime
+
+                // 2. Configure OTP display
                 tvOtp.text = formattedOtp.ifBlank { otp }
 
-                // Close button action
+                // 3. Actions
                 btnClose.setOnClickListener {
                     dismiss()
                 }
 
-                // Copy OTP action: copy only OTP digits, show Toast, and dismiss
                 btnCopy.setOnClickListener {
                     copyToClipboard(appContext, otp)
                     showToast(appContext, "Copied OTP: $otp")
                     dismiss()
                 }
 
-                // Dismiss on outside touch
+                // Tapping outside the card inside the floating root dismisses
+                rootLayout.setOnClickListener {
+                    dismiss()
+                }
+
+                // Prevent card clicks from triggering rootLayout dismiss
+                cardLayout.setOnClickListener {
+                    // Consume click
+                }
+
+                // Swipe-up gesture to dismiss smoothly
+                val gestureDetector = GestureDetector(appContext, object : GestureDetector.SimpleOnGestureListener() {
+                    override fun onFling(
+                        e1: MotionEvent?,
+                        e2: MotionEvent,
+                        velocityX: Float,
+                        velocityY: Float
+                    ): Boolean {
+                        if (e1 != null && (e1.y - e2.y) > 60 && abs(velocityY) > 150) {
+                            dismiss()
+                            return true
+                        }
+                        return false
+                    }
+                })
+
+                cardLayout.setOnTouchListener { _, event ->
+                    gestureDetector.onTouchEvent(event)
+                    false // Return false so click listeners on buttons still fire
+                }
+
+                // Dismiss on outside touch (when touching completely outside the window frame)
                 view.setOnTouchListener { _, event ->
                     if (event.action == MotionEvent.ACTION_OUTSIDE) {
                         dismiss()
@@ -129,12 +169,16 @@ object FloatingOtpManager {
                     }
                 }
 
+                // 4. WindowManager Layout Parameters
                 val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 } else {
                     @Suppress("DEPRECATION")
                     WindowManager.LayoutParams.TYPE_PHONE
                 }
+
+                val density = appContext.resources.displayMetrics.density
+                val topMarginPx = (36 * density).toInt()
 
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
@@ -146,7 +190,7 @@ object FloatingOtpManager {
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    y = 50 // Floating nicely below status bar
+                    y = topMarginPx
                     windowAnimations = android.R.style.Animation_Dialog
                 }
 
@@ -158,7 +202,7 @@ object FloatingOtpManager {
                 autoDismissRunnable = runnable
                 mainHandler.postDelayed(runnable, AUTO_DISMISS_DELAY_MS)
 
-                Log.d(TAG, "Floating OTP overlay displayed for sender=$sender, otp=$otp")
+                Log.d(TAG, "Floating OTP overlay successfully shown for sender=$cleanSender, otp=$otp")
             } catch (e: Exception) {
                 Log.e(TAG, "Error displaying floating OTP window", e)
             }
@@ -169,21 +213,29 @@ object FloatingOtpManager {
      * Safely dismisses the currently showing floating window.
      */
     fun dismiss() {
-        mainHandler.post {
-            autoDismissRunnable?.let { mainHandler.removeCallbacks(it) }
-            autoDismissRunnable = null
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            dismissInternal()
+        } else {
+            mainHandler.post { dismissInternal() }
+        }
+    }
 
-            currentOverlayView?.let { view ->
-                try {
-                    val windowManager = view.context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-                    if (view.isAttachedToWindow) {
-                        windowManager?.removeViewImmediate(view)
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Error removing floating overlay view", e)
-                } finally {
-                    currentOverlayView = null
+    private fun dismissInternal() {
+        autoDismissRunnable?.let { mainHandler.removeCallbacks(it) }
+        autoDismissRunnable = null
+
+        currentOverlayView?.let { view ->
+            try {
+                val windowManager = view.context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+                if (view.isAttachedToWindow) {
+                    windowManager?.removeViewImmediate(view)
+                } else {
+                    windowManager?.removeView(view)
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error removing floating overlay view", e)
+            } finally {
+                currentOverlayView = null
             }
         }
     }

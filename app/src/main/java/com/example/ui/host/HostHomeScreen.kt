@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -758,15 +759,42 @@ fun HostHomeScreen(
                 }
 
                 // Truecaller-Style Floating OTP Overlay Option Card
+                val isDarkTheme = isSystemInDarkTheme()
+                val floatingCardBg = if (isFloatingOtpEnabled) {
+                    if (isDarkTheme) Color(0xFF064E3B).copy(alpha = 0.35f) else Color(0xFFECFDF5)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                }
+                val floatingBorderColor = if (isFloatingOtpEnabled) {
+                    if (isDarkTheme) Color(0xFF10B981).copy(alpha = 0.6f) else Color(0xFF10B981).copy(alpha = 0.5f)
+                } else {
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                }
+                val floatingTitleColor = if (isFloatingOtpEnabled) {
+                    if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF065F46)
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+                val floatingSubtitleColor = if (isFloatingOtpEnabled) {
+                    if (isDarkTheme) Color(0xFFA7F3D0) else Color(0xFF047857)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                val floatingIconBg = if (isFloatingOtpEnabled) {
+                    if (isDarkTheme) Color(0xFF064E3B) else Color(0xFFD1FAE5)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
+                val floatingIconTint = if (isFloatingOtpEnabled) {
+                    if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
                 Card(
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isFloatingOtpEnabled) Color(0xFFECFDF5) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isFloatingOtpEnabled) Color(0xFF10B981).copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                    ),
+                    colors = CardDefaults.cardColors(containerColor = floatingCardBg),
+                    border = BorderStroke(1.dp, floatingBorderColor),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -783,16 +811,13 @@ fun HostHomeScreen(
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
-                                    .background(
-                                        if (isFloatingOtpEnabled) Color(0xFFD1FAE5) else MaterialTheme.colorScheme.surfaceVariant,
-                                        CircleShape
-                                    ),
+                                    .background(floatingIconBg, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.FlipToFront,
                                     contentDescription = null,
-                                    tint = if (isFloatingOtpEnabled) Color(0xFF059669) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = floatingIconTint,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -802,12 +827,12 @@ fun HostHomeScreen(
                                     text = "Floating OTP Popup (Truecaller Style)",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isFloatingOtpEnabled) Color(0xFF065F46) else MaterialTheme.colorScheme.onSurface
+                                    color = floatingTitleColor
                                 )
                                 Text(
                                     text = "Pop up a 1-tap copy card on your screen when an OTP arrives.",
                                     fontSize = 11.5.sp,
-                                    color = if (isFloatingOtpEnabled) Color(0xFF047857) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = floatingSubtitleColor,
                                     lineHeight = 15.sp
                                 )
                             }
@@ -845,7 +870,11 @@ fun HostHomeScreen(
                                     text = if (hasOverlayPermission) "Active · Displays over all apps" else "⚠️ Permission required",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (hasOverlayPermission) Color(0xFF059669) else Color(0xFFDC2626)
+                                    color = if (hasOverlayPermission) {
+                                        if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
+                                    } else {
+                                        Color(0xFFF87171)
+                                    }
                                 )
 
                                 OutlinedButton(
@@ -857,7 +886,7 @@ fun HostHomeScreen(
                                                 context = context,
                                                 sender = "Centru Bank",
                                                 otp = "881231",
-                                                formattedOtp = "8 8 1   2 3 1",
+                                                formattedOtp = "881 231",
                                                 timeString = "12:30 PM"
                                             )
                                         }
@@ -865,7 +894,7 @@ fun HostHomeScreen(
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = Color(0xFF059669)
+                                        contentColor = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
                                     ),
                                     border = BorderStroke(1.dp, Color(0xFF10B981)),
                                     modifier = Modifier.height(28.dp)

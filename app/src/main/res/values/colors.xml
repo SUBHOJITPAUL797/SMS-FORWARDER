@@ -19,4 +19,14 @@
     <color name="notif_copy_btn_text">#1D4ED8</color>
     <color name="notif_otp_badge_bg">#1A2563EB</color>
     <color name="notif_otp_badge_border">#4D2563EB</color>
+
+    <!-- Floating OTP Popup Colors - Light Mode -->
+    <color name="floating_card_bg">#FFFFFF</color>
+    <color name="floating_card_border">#10B981</color>
+    <color name="floating_otp_digits">#0F172A</color>
+    <color name="floating_subtext">#64748B</color>
+    <color name="floating_btn_bg">#ECFDF5</color>
+    <color name="floating_btn_border">#10B981</color>
+    <color name="floating_btn_text">#065F46</color>
+    <color name="floating_btn_ripple">#A7F3D0</color>
 </resources>
