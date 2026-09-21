@@ -179,9 +179,15 @@ class HostViewModel(
         }
     }
 
-    // Lazy Loading Pagination State
+    // Lazy Loading Pagination State - Messages
     private val _displayLimit = MutableStateFlow(25)
     val displayLimit: StateFlow<Int> = _displayLimit.asStateFlow()
+
+    private val _isLoadingOlderMessages = MutableStateFlow(false)
+    val isLoadingOlderMessages: StateFlow<Boolean> = _isLoadingOlderMessages.asStateFlow()
+
+    private val _hasMoreCloudMessages = MutableStateFlow(true)
+    val hasMoreCloudMessages: StateFlow<Boolean> = _hasMoreCloudMessages.asStateFlow()
 
     val pagedMessages: StateFlow<List<SmsMessage>> = combine(filteredMessages, _displayLimit) { list, limit ->
         list.take(limit)
@@ -190,12 +196,81 @@ class HostViewModel(
     val totalMessagesCount: StateFlow<Int> = filteredMessages.map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val hasMoreMessages: StateFlow<Boolean> = combine(filteredMessages, _displayLimit) { list, limit ->
-        list.size > limit
+    val hasMoreMessages: StateFlow<Boolean> = combine(filteredMessages, _displayLimit, _hasMoreCloudMessages) { list, limit, cloudMore ->
+        (list.size > limit) || cloudMore
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun loadMoreMessages() {
-        _displayLimit.value += 25
+        val currentLimit = _displayLimit.value
+        val cachedSize = filteredMessages.value.size
+        if (currentLimit < cachedSize) {
+            _displayLimit.value = currentLimit + 25
+        } else if (_hasMoreCloudMessages.value && !_isLoadingOlderMessages.value) {
+            viewModelScope.launch {
+                _isLoadingOlderMessages.value = true
+                val code = _hostCode.value
+                if (code.isNotEmpty()) {
+                    val res = smsRepository.loadOlderMessagesFromCloud(code, pageSize = 25)
+                    if (res.isSuccess) {
+                        val count = res.getOrDefault(0)
+                        if (count < 25) {
+                            _hasMoreCloudMessages.value = false
+                        }
+                        _displayLimit.value = currentLimit + 25
+                    } else {
+                        _hasMoreCloudMessages.value = false
+                    }
+                }
+                _isLoadingOlderMessages.value = false
+            }
+        }
+    }
+
+    // Lazy Loading Pagination State - Calls
+    private val _callsDisplayLimit = MutableStateFlow(25)
+    val callsDisplayLimit: StateFlow<Int> = _callsDisplayLimit.asStateFlow()
+
+    private val _isLoadingOlderCalls = MutableStateFlow(false)
+    val isLoadingOlderCalls: StateFlow<Boolean> = _isLoadingOlderCalls.asStateFlow()
+
+    private val _hasMoreCloudCalls = MutableStateFlow(true)
+    val hasMoreCloudCalls: StateFlow<Boolean> = _hasMoreCloudCalls.asStateFlow()
+
+    val pagedCalls: StateFlow<List<CallRecord>> = combine(filteredCalls, _callsDisplayLimit) { list, limit ->
+        list.take(limit)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val totalCallsCount: StateFlow<Int> = filteredCalls.map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val hasMoreCalls: StateFlow<Boolean> = combine(filteredCalls, _callsDisplayLimit, _hasMoreCloudCalls) { list, limit, cloudMore ->
+        (list.size > limit) || cloudMore
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun loadMoreCalls() {
+        val currentLimit = _callsDisplayLimit.value
+        val cachedSize = filteredCalls.value.size
+        if (currentLimit < cachedSize) {
+            _callsDisplayLimit.value = currentLimit + 25
+        } else if (_hasMoreCloudCalls.value && !_isLoadingOlderCalls.value) {
+            viewModelScope.launch {
+                _isLoadingOlderCalls.value = true
+                val code = _hostCode.value
+                if (code.isNotEmpty()) {
+                    val res = callRepository.loadOlderCallsFromCloud(code, pageSize = 25)
+                    if (res.isSuccess) {
+                        val count = res.getOrDefault(0)
+                        if (count < 25) {
+                            _hasMoreCloudCalls.value = false
+                        }
+                        _callsDisplayLimit.value = currentLimit + 25
+                    } else {
+                        _hasMoreCloudCalls.value = false
+                    }
+                }
+                _isLoadingOlderCalls.value = false
+            }
+        }
     }
 
     // Multi-Select and Deletion State

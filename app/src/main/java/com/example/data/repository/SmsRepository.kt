@@ -18,8 +18,15 @@ import com.example.data.remote.AuthSource
 import com.example.data.remote.FirestoreSource
 import com.example.domain.model.SmsMessage
 import com.example.worker.SmsUploadWorker
+import com.example.data.local.HostMessageEntity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 enum class InboxSyncScope(val label: String, val maxCount: Int?, val daysLimit: Int?) {
@@ -56,6 +63,9 @@ class SmsRepository(
     )
 
     private val smsDao = database.smsQueueDao()
+    private val hostMessageDao = database.hostMessageDao()
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val hostSmsSyncJobs = mutableMapOf<String, Job>()
 
     val totalQueueCount: Flow<Int> = smsDao.getTotalCountFlow()
     val uploadedCount: Flow<Int> = smsDao.getUploadedCountFlow()
@@ -300,8 +310,51 @@ class SmsRepository(
         WorkManager.getInstance(context).enqueue(uploadRequest)
     }
 
+    fun startHostSync(hostCode: String) {
+        synchronized(hostSmsSyncJobs) {
+            if (hostSmsSyncJobs[hostCode]?.isActive == true) return
+            hostSmsSyncJobs[hostCode] = repoScope.launch {
+                try {
+                    firestoreSource.observeSmsBatch(hostCode, limit = 25).collect { batch ->
+                        if (batch.upserted.isNotEmpty()) {
+                            val entities = batch.upserted.map { HostMessageEntity.fromSmsMessage(hostCode, it) }
+                            hostMessageDao.insertAll(entities)
+                        }
+                        if (batch.removedIds.isNotEmpty()) {
+                            hostMessageDao.deleteMultiple(batch.removedIds)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in host SMS live sync", e)
+                }
+            }
+        }
+    }
+
     fun observeHostSmsList(hostUid: String): Flow<List<SmsMessage>> {
-        return firestoreSource.observeSmsMessages(hostUid)
+        startHostSync(hostUid)
+        return hostMessageDao.observeMessages(hostUid).map { entities ->
+            entities.map { it.toSmsMessage() }
+        }
+    }
+
+    suspend fun loadOlderMessagesFromCloud(hostCode: String, pageSize: Long = 25): Result<Int> {
+        return try {
+            val oldestTimestamp = hostMessageDao.getOldestTimestamp(hostCode) ?: System.currentTimeMillis()
+            val fetchResult = firestoreSource.fetchOlderSms(hostCode, beforeTimestamp = oldestTimestamp, limit = pageSize)
+            if (fetchResult.isFailure) {
+                return Result.failure(fetchResult.exceptionOrNull() ?: Exception("Failed to fetch older SMS"))
+            }
+            val messages = fetchResult.getOrNull() ?: emptyList()
+            if (messages.isNotEmpty()) {
+                val entities = messages.map { HostMessageEntity.fromSmsMessage(hostCode, it) }
+                hostMessageDao.insertAll(entities)
+            }
+            Result.success(messages.size)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading older SMS from cloud", e)
+            Result.failure(e)
+        }
     }
 
     fun observeConnectedClients(hostCode: String): Flow<List<Map<String, Any>>> {
@@ -315,20 +368,30 @@ class SmsRepository(
     }
 
     suspend fun markAsRead(hostUid: String, messageId: String): Result<Unit> {
+        hostMessageDao.markAsRead(messageId)
         return firestoreSource.markSmsAsRead(hostUid, messageId)
     }
 
     suspend fun markAllAsRead(hostUid: String): Result<Unit> {
+        hostMessageDao.markAllAsRead(hostUid)
         return firestoreSource.markAllSmsAsRead(hostUid)
     }
 
     suspend fun deleteSms(hostUid: String, messageId: String): Result<Unit> {
+        // Delete from local Room cache immediately
+        hostMessageDao.deleteById(messageId)
+        // Delete from local client queue if present
         smsDao.deleteByMessageId(messageId)
+        // Delete from Firestore cloud DB
         return firestoreSource.deleteSms(hostUid, messageId)
     }
 
     suspend fun deleteMultipleSms(hostUid: String, messageIds: List<String>): Result<Unit> {
+        // Delete from local Room cache immediately
+        hostMessageDao.deleteMultiple(messageIds)
+        // Delete from local client queue if present
         smsDao.deleteMultiple(messageIds)
+        // Delete from Firestore cloud DB
         return firestoreSource.deleteMultipleSms(hostUid, messageIds)
     }
 }

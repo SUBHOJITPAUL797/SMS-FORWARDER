@@ -150,6 +150,7 @@ fun HostHomeScreen(
     val pagedMessages by viewModel.pagedMessages.collectAsStateWithLifecycle()
     val totalMessagesCount by viewModel.totalMessagesCount.collectAsStateWithLifecycle()
     val hasMoreMessages by viewModel.hasMoreMessages.collectAsStateWithLifecycle()
+    val isLoadingOlderMessages by viewModel.isLoadingOlderMessages.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadCount.collectAsStateWithLifecycle()
     val clientDeviceName by viewModel.clientDeviceName.collectAsStateWithLifecycle()
     val hostCode by viewModel.hostCode.collectAsStateWithLifecycle()
@@ -164,6 +165,10 @@ fun HostHomeScreen(
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val rawCalls by viewModel.rawCalls.collectAsStateWithLifecycle()
     val filteredCalls by viewModel.filteredCalls.collectAsStateWithLifecycle()
+    val pagedCalls by viewModel.pagedCalls.collectAsStateWithLifecycle()
+    val totalCallsCount by viewModel.totalCallsCount.collectAsStateWithLifecycle()
+    val hasMoreCalls by viewModel.hasMoreCalls.collectAsStateWithLifecycle()
+    val isLoadingOlderCalls by viewModel.isLoadingOlderCalls.collectAsStateWithLifecycle()
     val unreadCallsCount by viewModel.unreadCallsCount.collectAsStateWithLifecycle()
 
     val pullToRefreshState = rememberPullToRefreshState()
@@ -1241,19 +1246,38 @@ fun HostHomeScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        text = "Showing ${pagedMessages.size} of $totalMessagesCount messages",
-                                        fontSize = 12.sp,
+                                        text = "Showing ${pagedMessages.size} of $totalMessagesCount messages (Cached in Encrypted Local Storage)",
+                                        fontSize = 11.5.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         fontWeight = FontWeight.Medium
                                     )
-                                    if (hasMoreMessages) {
+                                    if (isLoadingOlderMessages) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Fetching older messages from cloud...",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    } else if (hasMoreMessages) {
                                         Spacer(modifier = Modifier.height(8.dp))
                                         OutlinedButton(
                                             onClick = { viewModel.loadMoreMessages() },
                                             shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.fillMaxWidth(0.6f)
+                                            modifier = Modifier.fillMaxWidth(0.65f)
                                         ) {
-                                            Text("Load More (${totalMessagesCount - pagedMessages.size} remaining)", fontSize = 12.sp)
+                                            Text("Load Older Messages", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -1363,7 +1387,7 @@ fun HostHomeScreen(
                                 }
                             }
 
-                            items(filteredCalls, key = { it.callId }) { call ->
+                            items(pagedCalls, key = { it.callId }) { call ->
                                 CallCardItem(
                                     call = call,
                                     onMarkAsRead = { viewModel.markCallAsRead(call.callId) },
@@ -1384,6 +1408,52 @@ fun HostHomeScreen(
                                         Toast.makeText(context, "Copied: ${call.phoneNumber}", Toast.LENGTH_SHORT).show()
                                     }
                                 )
+                            }
+
+                            // Lazy Loading Footer / Pagination Info for Calls
+                            item {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "Showing ${pagedCalls.size} of $totalCallsCount calls (Cached in Encrypted Local Storage)",
+                                        fontSize = 11.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    if (isLoadingOlderCalls) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                                color = Color(0xFF0284C7)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Fetching older calls from cloud...",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF0284C7),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    } else if (hasMoreCalls) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        OutlinedButton(
+                                            onClick = { viewModel.loadMoreCalls() },
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth(0.65f)
+                                        ) {
+                                            Text("Load Older Calls", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
                             }
 
                             item {

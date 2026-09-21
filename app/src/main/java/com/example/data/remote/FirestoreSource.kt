@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.domain.model.CallRecord
 import com.example.domain.model.SmsMessage
 import com.example.domain.model.UserRole
+import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -255,10 +256,17 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
         }
     }
 
-    fun observeSmsMessages(hostUid: String): Flow<List<SmsMessage>> = callbackFlow {
+    data class SmsSyncBatch(
+        val upserted: List<SmsMessage>,
+        val removedIds: List<String>
+    )
+
+    fun observeSmsMessages(hostUid: String, limit: Long = 25): Flow<List<SmsMessage>> = callbackFlow {
         val listener = firestore.collection(COLLECTION_SMS)
             .document(hostUid)
             .collection("messages")
+            .orderBy("receivedAt", Query.Direction.DESCENDING)
+            .limit(limit)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to SMS collection", error)
@@ -266,10 +274,63 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 }
                 val messages = snapshot?.documents?.mapNotNull { doc ->
                     doc.data?.let { SmsMessage.fromMap(it) }
-                }?.sortedByDescending { it.receivedAt } ?: emptyList()
+                } ?: emptyList()
                 trySend(messages)
             }
         awaitClose { listener.remove() }
+    }
+
+    fun observeSmsBatch(hostUid: String, limit: Long = 25): Flow<SmsSyncBatch> = callbackFlow {
+        val listener = firestore.collection(COLLECTION_SMS)
+            .document(hostUid)
+            .collection("messages")
+            .orderBy("receivedAt", Query.Direction.DESCENDING)
+            .limit(limit)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to SMS batch", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) return@addSnapshotListener
+
+                val upserted = mutableListOf<SmsMessage>()
+                val removedIds = mutableListOf<String>()
+
+                for (dc in snapshot.documentChanges) {
+                    when (dc.type) {
+                        DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> {
+                            val msg = SmsMessage.fromMap(dc.document.data)
+                            upserted.add(msg)
+                        }
+                        DocumentChange.Type.REMOVED -> {
+                            removedIds.add(dc.document.id)
+                        }
+                    }
+                }
+                trySend(SmsSyncBatch(upserted, removedIds))
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun fetchOlderSms(hostUid: String, beforeTimestamp: Long, limit: Long = 25): Result<List<SmsMessage>> {
+        return try {
+            val snapshot = firestore.collection(COLLECTION_SMS)
+                .document(hostUid)
+                .collection("messages")
+                .whereLessThan("receivedAt", beforeTimestamp)
+                .orderBy("receivedAt", Query.Direction.DESCENDING)
+                .limit(limit)
+                .get()
+                .await()
+
+            val messages = snapshot.documents.mapNotNull { doc ->
+                doc.data?.let { SmsMessage.fromMap(it) }
+            }
+            Result.success(messages)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching older SMS messages", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun markSmsAsRead(hostUid: String, messageId: String): Result<Unit> {
@@ -360,10 +421,17 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
         }
     }
 
-    fun observeCallRecords(hostUid: String): Flow<List<CallRecord>> = callbackFlow {
+    data class CallSyncBatch(
+        val upserted: List<CallRecord>,
+        val removedIds: List<String>
+    )
+
+    fun observeCallRecords(hostUid: String, limit: Long = 25): Flow<List<CallRecord>> = callbackFlow {
         val listener = firestore.collection(COLLECTION_CALLS)
             .document(hostUid)
             .collection("calls")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(limit)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.e(TAG, "Error listening to Calls collection", error)
@@ -371,10 +439,63 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 }
                 val calls = snapshot?.documents?.mapNotNull { doc ->
                     doc.data?.let { CallRecord.fromMap(it) }
-                }?.sortedByDescending { it.timestamp } ?: emptyList()
+                } ?: emptyList()
                 trySend(calls)
             }
         awaitClose { listener.remove() }
+    }
+
+    fun observeCallBatch(hostUid: String, limit: Long = 25): Flow<CallSyncBatch> = callbackFlow {
+        val listener = firestore.collection(COLLECTION_CALLS)
+            .document(hostUid)
+            .collection("calls")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .limit(limit)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to Calls batch", error)
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) return@addSnapshotListener
+
+                val upserted = mutableListOf<CallRecord>()
+                val removedIds = mutableListOf<String>()
+
+                for (dc in snapshot.documentChanges) {
+                    when (dc.type) {
+                        DocumentChange.Type.ADDED, DocumentChange.Type.MODIFIED -> {
+                            val record = CallRecord.fromMap(dc.document.data)
+                            upserted.add(record)
+                        }
+                        DocumentChange.Type.REMOVED -> {
+                            removedIds.add(dc.document.id)
+                        }
+                    }
+                }
+                trySend(CallSyncBatch(upserted, removedIds))
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun fetchOlderCalls(hostUid: String, beforeTimestamp: Long, limit: Long = 25): Result<List<CallRecord>> {
+        return try {
+            val snapshot = firestore.collection(COLLECTION_CALLS)
+                .document(hostUid)
+                .collection("calls")
+                .whereLessThan("timestamp", beforeTimestamp)
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(limit)
+                .get()
+                .await()
+
+            val calls = snapshot.documents.mapNotNull { doc ->
+                doc.data?.let { CallRecord.fromMap(it) }
+            }
+            Result.success(calls)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching older call records", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun markCallAsRead(hostUid: String, callId: String): Result<Unit> {

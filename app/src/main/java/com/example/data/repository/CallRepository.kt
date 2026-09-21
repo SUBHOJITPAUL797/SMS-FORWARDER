@@ -9,10 +9,17 @@ import com.example.data.local.CallQueueEntity
 import com.example.data.local.QueueStatus
 import com.example.data.remote.AuthSource
 import com.example.data.remote.FirestoreSource
+import com.example.data.local.HostCallEntity
 import com.example.domain.model.CallRecord
 import com.example.domain.model.CallType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.util.Collections
 import java.util.LinkedHashMap
 
@@ -36,6 +43,9 @@ class CallRepository(
     )
 
     private val callDao = database.callQueueDao()
+    private val hostCallDao = database.hostCallDao()
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val hostCallSyncJobs = mutableMapOf<String, Job>()
 
     val totalQueueCount: Flow<Int> = callDao.getTotalCountFlow()
     val pendingCount: Flow<Int> = callDao.getPendingCountFlow()
@@ -160,23 +170,78 @@ class CallRepository(
 
     // ----------------- Host Observation APIs -----------------
 
+    fun startHostSync(hostCode: String) {
+        synchronized(hostCallSyncJobs) {
+            if (hostCallSyncJobs[hostCode]?.isActive == true) return
+            hostCallSyncJobs[hostCode] = repoScope.launch {
+                try {
+                    firestoreSource.observeCallBatch(hostCode, limit = 25).collect { batch ->
+                        if (batch.upserted.isNotEmpty()) {
+                            val entities = batch.upserted.map { HostCallEntity.fromCallRecord(hostCode, it) }
+                            hostCallDao.insertAll(entities)
+                        }
+                        if (batch.removedIds.isNotEmpty()) {
+                            hostCallDao.deleteMultiple(batch.removedIds)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in host call live sync", e)
+                }
+            }
+        }
+    }
+
     fun observeHostCallList(hostUid: String): Flow<List<CallRecord>> {
-        return firestoreSource.observeCallRecords(hostUid)
+        startHostSync(hostUid)
+        return hostCallDao.observeCalls(hostUid).map { entities ->
+            entities.map { it.toCallRecord() }
+        }
+    }
+
+    suspend fun loadOlderCallsFromCloud(hostCode: String, pageSize: Long = 25): Result<Int> {
+        return try {
+            val oldestTimestamp = hostCallDao.getOldestTimestamp(hostCode) ?: System.currentTimeMillis()
+            val fetchResult = firestoreSource.fetchOlderCalls(hostCode, beforeTimestamp = oldestTimestamp, limit = pageSize)
+            if (fetchResult.isFailure) {
+                return Result.failure(fetchResult.exceptionOrNull() ?: Exception("Failed to fetch older calls"))
+            }
+            val calls = fetchResult.getOrNull() ?: emptyList()
+            if (calls.isNotEmpty()) {
+                val entities = calls.map { HostCallEntity.fromCallRecord(hostCode, it) }
+                hostCallDao.insertAll(entities)
+            }
+            Result.success(calls.size)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading older calls from cloud", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun markCallAsRead(hostUid: String, callId: String): Result<Unit> {
+        hostCallDao.markAsRead(callId)
         return firestoreSource.markCallAsRead(hostUid, callId)
     }
 
     suspend fun markAllCallsAsRead(hostUid: String): Result<Unit> {
+        hostCallDao.markAllAsRead(hostUid)
         return firestoreSource.markAllCallsAsRead(hostUid)
     }
 
     suspend fun deleteCall(hostUid: String, callId: String): Result<Unit> {
+        // Delete from local Room cache immediately
+        hostCallDao.deleteById(callId)
+        // Delete from local client queue if present
+        callDao.deleteByCallId(callId)
+        // Delete from Firestore cloud DB
         return firestoreSource.deleteCall(hostUid, callId)
     }
 
     suspend fun deleteMultipleCalls(hostUid: String, callIds: List<String>): Result<Unit> {
+        // Delete from local Room cache immediately
+        hostCallDao.deleteMultiple(callIds)
+        // Delete from local client queue if present
+        callDao.deleteMultiple(callIds)
+        // Delete from Firestore cloud DB
         return firestoreSource.deleteMultipleCalls(hostUid, callIds)
     }
 }
