@@ -387,7 +387,14 @@ class HostViewModel(
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
-            kotlinx.coroutines.delay(800)
+            val code = _hostCode.value
+            if (code.isNotEmpty()) {
+                callRepository.startHostSync(code)
+                smsRepository.startHostSync(code)
+                callRepository.loadOlderCallsFromCloud(code, pageSize = 25)
+                smsRepository.loadOlderMessagesFromCloud(code, pageSize = 25)
+            }
+            kotlinx.coroutines.delay(500)
             _isRefreshing.value = false
         }
     }

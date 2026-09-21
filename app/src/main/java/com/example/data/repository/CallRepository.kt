@@ -270,9 +270,19 @@ class CallRepository(
                         )
                         pendingEntities.add(entity)
                         newImported++
+                    } else if (existing.status == QueueStatus.PENDING.name) {
+                        pendingEntities.add(existing)
                     } else {
                         alreadyExisted++
                     }
+                }
+            }
+
+            // Also pick up any previous PENDING calls that may have failed before
+            val priorPending = callDao.getCallsByStatus(QueueStatus.PENDING.name)
+            for (p in priorPending) {
+                if (pendingEntities.none { it.callId == p.callId }) {
+                    pendingEntities.add(p)
                 }
             }
 
