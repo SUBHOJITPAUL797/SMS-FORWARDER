@@ -2,6 +2,7 @@ package com.example.data.remote
 
 import android.os.Build
 import android.util.Log
+import com.example.domain.model.CallRecord
 import com.example.domain.model.SmsMessage
 import com.example.domain.model.UserRole
 import com.google.firebase.firestore.FieldValue
@@ -24,6 +25,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
         const val COLLECTION_PAIRINGS = "sms_forwarder_pairings"
         const val COLLECTION_LINKS = "sms_forwarder_links"
         const val COLLECTION_SMS = "sms_forwarder_messages"
+        const val COLLECTION_CALLS = "sms_forwarder_calls"
     }
 
     suspend fun saveUserProfile(
@@ -337,6 +339,110 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting multiple SMS from Firestore", e)
+            Result.failure(e)
+        }
+    }
+
+    // ----------------- Call Forwarding APIs -----------------
+
+    suspend fun uploadCall(hostUid: String, call: CallRecord): Result<Unit> {
+        return try {
+            firestore.collection(COLLECTION_CALLS)
+                .document(hostUid)
+                .collection("calls")
+                .document(call.callId)
+                .set(call.toMap(), SetOptions.merge())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to upload Call to Firestore", e)
+            Result.failure(e)
+        }
+    }
+
+    fun observeCallRecords(hostUid: String): Flow<List<CallRecord>> = callbackFlow {
+        val listener = firestore.collection(COLLECTION_CALLS)
+            .document(hostUid)
+            .collection("calls")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error listening to Calls collection", error)
+                    return@addSnapshotListener
+                }
+                val calls = snapshot?.documents?.mapNotNull { doc ->
+                    doc.data?.let { CallRecord.fromMap(it) }
+                }?.sortedByDescending { it.timestamp } ?: emptyList()
+                trySend(calls)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun markCallAsRead(hostUid: String, callId: String): Result<Unit> {
+        return try {
+            firestore.collection(COLLECTION_CALLS)
+                .document(hostUid)
+                .collection("calls")
+                .document(callId)
+                .update("read", true)
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markAllCallsAsRead(hostUid: String): Result<Unit> {
+        return try {
+            val unreadDocs = firestore.collection(COLLECTION_CALLS)
+                .document(hostUid)
+                .collection("calls")
+                .whereEqualTo("read", false)
+                .get()
+                .await()
+
+            val batch = firestore.batch()
+            for (doc in unreadDocs.documents) {
+                batch.update(doc.reference, "read", true)
+            }
+            batch.commit().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteCall(hostUid: String, callId: String): Result<Unit> {
+        return try {
+            firestore.collection(COLLECTION_CALLS)
+                .document(hostUid)
+                .collection("calls")
+                .document(callId)
+                .delete()
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting call $callId from Firestore", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteMultipleCalls(hostUid: String, callIds: List<String>): Result<Unit> {
+        return try {
+            val chunks = callIds.chunked(450)
+            for (chunk in chunks) {
+                val batch = firestore.batch()
+                for (id in chunk) {
+                    val docRef = firestore.collection(COLLECTION_CALLS)
+                        .document(hostUid)
+                        .collection("calls")
+                        .document(id)
+                    batch.delete(docRef)
+                }
+                batch.commit().await()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting multiple calls from Firestore", e)
             Result.failure(e)
         }
     }

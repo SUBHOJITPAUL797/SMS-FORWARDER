@@ -29,6 +29,11 @@ class UserPreferencesRepository(private val context: Context) {
         val KEY_HOST_CODE = stringPreferencesKey("host_code")
         val KEY_AUTOSTART_CONFIGURED = booleanPreferencesKey("autostart_configured")
         val KEY_FLOATING_OTP_ENABLED = booleanPreferencesKey("floating_otp_enabled")
+        val KEY_CALL_FORWARDING_ENABLED = booleanPreferencesKey("call_forwarding_enabled")
+    }
+
+    val isCallForwardingEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[KEY_CALL_FORWARDING_ENABLED] ?: true
     }
 
     val isFloatingOtpEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
@@ -146,6 +151,12 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setFloatingOtpEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[KEY_FLOATING_OTP_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setCallForwardingEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[KEY_CALL_FORWARDING_ENABLED] = enabled
         }
     }
 

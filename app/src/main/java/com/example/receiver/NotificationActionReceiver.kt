@@ -23,6 +23,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
         const val ACTION_COPY_OTP = "com.example.action.COPY_OTP"
         const val ACTION_COPY_SMS = "com.example.action.COPY_SMS"
+        const val ACTION_COPY_CALL_NUMBER = "com.example.action.COPY_CALL_NUMBER"
         const val ACTION_MARK_READ = "com.example.action.MARK_READ"
         const val ACTION_DISMISS = "com.example.action.DISMISS"
 
@@ -31,6 +32,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         const val EXTRA_MESSAGE_ID = "extra_message_id"
         const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
         const val EXTRA_HOST_CODE = "extra_host_code"
+        const val EXTRA_PHONE_NUMBER = "extra_phone_number"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -39,6 +41,14 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
 
         when (action) {
+            ACTION_COPY_CALL_NUMBER -> {
+                val phoneNumber = intent.getStringExtra(EXTRA_PHONE_NUMBER) ?: ""
+                if (phoneNumber.isNotBlank()) {
+                    copyToClipboard(context, "Phone Number", phoneNumber)
+                    showToast(context, "Copied: $phoneNumber")
+                }
+            }
+
             ACTION_COPY_OTP -> {
                 val otp = intent.getStringExtra(EXTRA_OTP) ?: ""
                 if (otp.isNotBlank()) {

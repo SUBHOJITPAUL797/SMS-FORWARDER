@@ -80,6 +80,16 @@ class ClientViewModel(
         }
     }
 
+    val isCallForwardingEnabled: StateFlow<Boolean> = com.example.SmsBridgeApp.instance.preferencesRepository
+        .isCallForwardingEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    fun setCallForwardingEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            com.example.SmsBridgeApp.instance.preferencesRepository.setCallForwardingEnabled(enabled)
+        }
+    }
+
     fun syncRealInbox(
         scope: com.example.data.repository.InboxSyncScope = com.example.data.repository.InboxSyncScope.ALL_TIME,
         onResult: (com.example.data.repository.SyncResult?, Boolean) -> Unit

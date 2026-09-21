@@ -2,8 +2,11 @@ package com.example.ui.host
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.SmsBridgeApp
 import com.example.data.repository.AuthRepository
+import com.example.data.repository.CallRepository
 import com.example.data.repository.SmsRepository
+import com.example.domain.model.CallRecord
 import com.example.domain.model.SmsMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,11 +20,24 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+enum class HostTab {
+    MESSAGES,
+    CALLS
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class HostViewModel(
     private val authRepository: AuthRepository,
-    private val smsRepository: SmsRepository
+    private val smsRepository: SmsRepository,
+    private val callRepository: CallRepository = SmsBridgeApp.instance.callRepository
 ) : ViewModel() {
+
+    private val _selectedTab = MutableStateFlow(HostTab.MESSAGES)
+    val selectedTab: StateFlow<HostTab> = _selectedTab.asStateFlow()
+
+    fun selectTab(tab: HostTab) {
+        _selectedTab.value = tab
+    }
 
     private val _hostCode = MutableStateFlow("")
     val hostCode: StateFlow<String> = _hostCode.asStateFlow()
@@ -84,8 +100,32 @@ class HostViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val isLiveConnected: StateFlow<Boolean> = combine(connectedClients, rawMessages) { clients, messages ->
-        clients.isNotEmpty() || messages.isNotEmpty()
+    val rawCalls: StateFlow<List<CallRecord>> = _hostCode
+        .flatMapLatest { code ->
+            if (code.isNotEmpty()) {
+                callRepository.observeHostCallList(code)
+            } else {
+                flowOf(emptyList())
+            }
+        }
+        .map { list ->
+            val seenKeys = mutableSetOf<String>()
+            val deduplicated = mutableListOf<CallRecord>()
+            for (call in list) {
+                val timeBucket = call.timestamp / 4_000L
+                val contentKey = "${call.phoneNumber.trim()}|${call.callType.name}|$timeBucket"
+                val idKey = call.callId
+
+                if (seenKeys.add(idKey) && seenKeys.add(contentKey)) {
+                    deduplicated.add(call)
+                }
+            }
+            deduplicated
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val isLiveConnected: StateFlow<Boolean> = combine(connectedClients, rawMessages, rawCalls) { clients, messages, calls ->
+        clients.isNotEmpty() || messages.isNotEmpty() || calls.isNotEmpty()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val filteredMessages: StateFlow<List<SmsMessage>> = combine(rawMessages, _searchQuery) { messages, query ->
@@ -99,8 +139,24 @@ class HostViewModel(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val filteredCalls: StateFlow<List<CallRecord>> = combine(rawCalls, _searchQuery) { calls, query ->
+        if (query.isBlank()) {
+            calls
+        } else {
+            calls.filter {
+                it.phoneNumber.contains(query, ignoreCase = true) ||
+                        it.contactName.contains(query, ignoreCase = true) ||
+                        it.callType.name.contains(query, ignoreCase = true)
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val unreadCount: StateFlow<Int> = rawMessages.combine(_searchQuery) { messages, _ ->
         messages.count { !it.read }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val unreadCallsCount: StateFlow<Int> = rawCalls.map { calls ->
+        calls.count { !it.read }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val isAutoStartConfigured: StateFlow<Boolean> = com.example.SmsBridgeApp.instance.preferencesRepository
@@ -221,6 +277,34 @@ class HostViewModel(
             val code = _hostCode.value
             if (code.isNotEmpty()) {
                 smsRepository.markAllAsRead(code)
+            }
+        }
+    }
+
+    fun deleteSingleCall(callId: String, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            if (code.isNotEmpty()) {
+                callRepository.deleteCall(code, callId)
+            }
+            onComplete()
+        }
+    }
+
+    fun markCallAsRead(callId: String) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            if (code.isNotEmpty()) {
+                callRepository.markCallAsRead(code, callId)
+            }
+        }
+    }
+
+    fun markAllCallsAsRead() {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            if (code.isNotEmpty()) {
+                callRepository.markAllCallsAsRead(code)
             }
         }
     }

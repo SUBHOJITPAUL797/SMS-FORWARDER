@@ -11,6 +11,8 @@ import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.SmsBridgeApp
+import com.example.domain.model.CallRecord
+import com.example.domain.model.CallType
 import com.example.receiver.NotificationActionReceiver
 import com.example.service.SmsBridgeFcmService
 import kotlinx.coroutines.flow.firstOrNull
@@ -222,5 +224,106 @@ object HostNotificationManager {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(notifId, notificationBuilder.build())
         Log.d(TAG, "Notification displayed: id=$notifId, sender=$cleanSender, isOtp=${otpResult.isOtp}")
+    }
+
+    /**
+     * Displays a rich call forward notification (Missed, Received, Outgoing) on the Host device.
+     */
+    fun showCallNotification(
+        context: Context,
+        callRecord: CallRecord,
+        hostCode: String? = null
+    ) {
+        val callerName = callRecord.getDisplayName()
+        val phoneNumber = callRecord.phoneNumber
+        val callType = callRecord.callType
+        val durationStr = callRecord.formattedDuration()
+        val cleanCallId = callRecord.callId.ifBlank { "${phoneNumber}_${callRecord.timestamp}" }
+
+        val dedupKey = "call|$cleanCallId|${callRecord.timestamp / 4_000L}"
+        val now = System.currentTimeMillis()
+        val lastSeen = recentNotifications[dedupKey]
+        if (lastSeen != null && (now - lastSeen) < 15_000L) {
+            Log.d(TAG, "Call notification skipped (already dispatched within last 15s): $dedupKey")
+            return
+        }
+        recentNotifications[dedupKey] = now
+
+        val notifId = (cleanCallId.hashCode() and 0x3FFFFFFF)
+        val timeString = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(callRecord.timestamp))
+
+        val title = when (callType) {
+            CallType.MISSED -> "📵 Missed Call from $callerName"
+            CallType.INCOMING -> "📞 Received Call from $callerName"
+            CallType.OUTGOING -> "📲 Outgoing Call to $callerName"
+            CallType.REJECTED -> "🚫 Rejected Call from $callerName"
+        }
+
+        val body = if (callType == CallType.MISSED) {
+            "Missed call from $phoneNumber · $timeString"
+        } else {
+            "Duration: $durationStr · $timeString"
+        }
+
+        // Tap opens Host screen in MainActivity
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("extra_call_id", cleanCallId)
+            putExtra("extra_open_host", true)
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context,
+            notifId,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action 1: 1-Tap Call Back (opens phone dialer with number)
+        val dialIntent = Intent(Intent.ACTION_DIAL).apply {
+            data = android.net.Uri.parse("tel:$phoneNumber")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        val dialPendingIntent = PendingIntent.getActivity(
+            context,
+            notifId + 1,
+            dialIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Action 2: 1-Tap Copy Number
+        val copyIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_COPY_CALL_NUMBER
+            putExtra(NotificationActionReceiver.EXTRA_PHONE_NUMBER, phoneNumber)
+            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notifId)
+        }
+        val copyPendingIntent = PendingIntent.getBroadcast(
+            context,
+            notifId + 2,
+            copyIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return
+
+        val builder = NotificationCompat.Builder(context, "call_forward_alerts")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("$body\nFrom: $callerName ($phoneNumber)\nForwarded by ${callRecord.clientDeviceName.ifBlank { "Client Device" }}")
+            )
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setAutoCancel(true)
+            .setSound(defaultSoundUri)
+            .setContentIntent(contentPendingIntent)
+            .addAction(R.drawable.ic_notification, "Call Back", dialPendingIntent)
+            .addAction(R.drawable.ic_copy, "Copy Number", copyPendingIntent)
+
+        notificationManager.notify(notifId, builder.build())
+        Log.d(TAG, "Call notification displayed: id=$notifId, caller=$callerName, type=$callType")
     }
 }

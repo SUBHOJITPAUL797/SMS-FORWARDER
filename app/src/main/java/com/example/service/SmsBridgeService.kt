@@ -75,31 +75,64 @@ class SmsBridgeService : Service() {
                     hostListenerJob = launch {
                         val hostCode = app.authRepository.getHostCode()
                         if (hostCode.isNotEmpty()) {
-                            Log.i(TAG, "Host mode active ($hostCode). Starting real-time Firestore SMS listener...")
-                            var initialLoadComplete = false
-                            val knownMessageIds = mutableSetOf<String>()
+                            Log.i(TAG, "Host mode active ($hostCode). Starting real-time Firestore SMS and Call listeners...")
+                            
+                            // 1. SMS Listener
+                            launch {
+                                var initialLoadComplete = false
+                                val knownMessageIds = mutableSetOf<String>()
 
-                            app.smsRepository.observeHostSmsList(hostCode).collect { messages ->
-                                if (!initialLoadComplete) {
-                                    messages.forEach { knownMessageIds.add(it.messageId) }
-                                    initialLoadComplete = true
-                                    Log.d(TAG, "Host listener initialized with ${messages.size} existing messages.")
-                                } else {
-                                    val now = System.currentTimeMillis()
-                                    for (msg in messages) {
-                                        if (knownMessageIds.add(msg.messageId)) {
-                                            // Only notify if message was received recently or uploaded just now, and is unread
-                                            val isRecent = Math.abs(now - msg.receivedAt) < 15 * 60 * 1000L ||
-                                                    (msg.uploadedAt > 0 && Math.abs(now - msg.uploadedAt) < 2 * 60 * 1000L)
-                                            if (isRecent && !msg.read) {
-                                                Log.i(TAG, "New unread SMS detected in real-time on Host: ${msg.messageId} from ${msg.sender}")
-                                                com.example.util.HostNotificationManager.showSmsNotification(
-                                                    context = this@SmsBridgeService,
-                                                    sender = msg.sender,
-                                                    body = msg.body,
-                                                    messageId = msg.messageId,
-                                                    hostCode = hostCode
-                                                )
+                                app.smsRepository.observeHostSmsList(hostCode).collect { messages ->
+                                    if (!initialLoadComplete) {
+                                        messages.forEach { knownMessageIds.add(it.messageId) }
+                                        initialLoadComplete = true
+                                        Log.d(TAG, "Host listener initialized with ${messages.size} existing messages.")
+                                    } else {
+                                        val now = System.currentTimeMillis()
+                                        for (msg in messages) {
+                                            if (knownMessageIds.add(msg.messageId)) {
+                                                val isRecent = Math.abs(now - msg.receivedAt) < 15 * 60 * 1000L ||
+                                                        (msg.uploadedAt > 0 && Math.abs(now - msg.uploadedAt) < 2 * 60 * 1000L)
+                                                if (isRecent && !msg.read) {
+                                                    Log.i(TAG, "New unread SMS detected on Host: ${msg.messageId} from ${msg.sender}")
+                                                    com.example.util.HostNotificationManager.showSmsNotification(
+                                                        context = this@SmsBridgeService,
+                                                        sender = msg.sender,
+                                                        body = msg.body,
+                                                        messageId = msg.messageId,
+                                                        hostCode = hostCode
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 2. Calls Listener
+                            launch {
+                                var initialCallsLoadComplete = false
+                                val knownCallIds = mutableSetOf<String>()
+
+                                app.callRepository.observeHostCallList(hostCode).collect { calls ->
+                                    if (!initialCallsLoadComplete) {
+                                        calls.forEach { knownCallIds.add(it.callId) }
+                                        initialCallsLoadComplete = true
+                                        Log.d(TAG, "Host call listener initialized with ${calls.size} existing calls.")
+                                    } else {
+                                        val now = System.currentTimeMillis()
+                                        for (call in calls) {
+                                            if (knownCallIds.add(call.callId)) {
+                                                val isRecent = Math.abs(now - call.timestamp) < 15 * 60 * 1000L ||
+                                                        (call.uploadedAt > 0 && Math.abs(now - call.uploadedAt) < 2 * 60 * 1000L)
+                                                if (isRecent && !call.read) {
+                                                    Log.i(TAG, "New call event detected on Host: ${call.callId} (${call.callType}, ${call.phoneNumber})")
+                                                    com.example.util.HostNotificationManager.showCallNotification(
+                                                        context = this@SmsBridgeService,
+                                                        callRecord = call,
+                                                        hostCode = hostCode
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -108,10 +141,11 @@ class SmsBridgeService : Service() {
                         }
                     }
                 } else if (role == com.example.domain.model.UserRole.CLIENT) {
-                    updateServiceNotification("SMS Bridge Client Active", "Monitoring incoming SMS and forwarding in real time")
+                    updateServiceNotification("SMS & Call Bridge Client Active", "Monitoring incoming SMS and Calls in real time")
                     hostListenerJob?.cancel()
                     hostListenerJob = null
                     app.smsRepository.syncAllPendingMessages()
+                    app.callRepository.syncAllPendingCalls()
                 }
             }
         }

@@ -38,6 +38,7 @@ fun AppNavGraph(
     val authRepository = app.authRepository
     val pairingRepository = app.pairingRepository
     val smsRepository = app.smsRepository
+    val callRepository = app.callRepository
 
     NavHost(
         navController = navController,
@@ -153,7 +154,7 @@ fun AppNavGraph(
 
         // Host Home Screen
         composable(Screen.HostHome.route) {
-            val viewModel = remember { HostViewModel(authRepository, smsRepository) }
+            val viewModel = remember { HostViewModel(authRepository, smsRepository, callRepository) }
             HostHomeScreen(
                 viewModel = viewModel,
                 onChangeRole = {

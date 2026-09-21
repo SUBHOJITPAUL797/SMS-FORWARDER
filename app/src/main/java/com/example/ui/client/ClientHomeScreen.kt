@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Sensors
@@ -133,6 +134,7 @@ fun ClientHomeScreen(
     val recentMessages by viewModel.recentLocalMessages.collectAsStateWithLifecycle()
     val linkedHostUid by viewModel.linkedHostUid.collectAsStateWithLifecycle()
     val isAutoStartConfigured by viewModel.isAutoStartConfigured.collectAsStateWithLifecycle()
+    val isCallForwardingEnabled by viewModel.isCallForwardingEnabled.collectAsStateWithLifecycle()
 
     var isServiceRunning by remember { mutableStateOf(true) }
     var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
@@ -257,6 +259,26 @@ fun ClientHomeScreen(
         )
     }
 
+    var hasCallPermissions by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val callPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        hasCallPermissions = (perms[Manifest.permission.READ_PHONE_STATE] == true) &&
+                (perms[Manifest.permission.READ_CALL_LOG] == true)
+        if (hasCallPermissions) {
+            viewModel.setCallForwardingEnabled(true)
+            Toast.makeText(context, "Call Forwarding Enabled with Call Log access", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Phone & Call Log permissions are needed to detect incoming calls.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
     var isBatteryExempt by remember {
         mutableStateOf(
@@ -300,6 +322,8 @@ fun ClientHomeScreen(
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     hasNotificationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
                 }
+                hasCallPermissions = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
                 isBatteryExempt = powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
                 if (hasSmsPermission) {
                     viewModel.toggleService(context, true)
@@ -853,6 +877,149 @@ fun ClientHomeScreen(
                 }
             }
 
+            // Call Details Forwarding Toggle Card
+            item {
+                val isCallActive = isCallForwardingEnabled && hasCallPermissions
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isCallActive) Color(0xFFEFF6FF) else Color(0xFFF8FAFC)
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isCallActive) Color(0xFF93C5FD) else Color(0xFFE2E8F0)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .background(
+                                            color = if (isCallActive) Color(0xFF0284C7) else Color(0xFF94A3B8),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Phone,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column {
+                                    Text(
+                                        text = "Call Details Forwarding",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isCallActive) Color(0xFF0369A1) else Color(0xFF334155)
+                                    )
+                                    Text(
+                                        text = if (isCallActive) {
+                                            "Forwarding incoming, missed & call logs"
+                                        } else if (!hasCallPermissions) {
+                                            "⚠️ Permission required to detect calls"
+                                        } else {
+                                            "Enable switch to forward call logs"
+                                        },
+                                        fontSize = 12.sp,
+                                        color = if (isCallActive) Color(0xFF0284C7) else Color(0xFF64748B)
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = isCallForwardingEnabled && hasCallPermissions,
+                                onCheckedChange = { checked ->
+                                    if (checked) {
+                                        if (!hasCallPermissions) {
+                                            callPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.READ_PHONE_STATE,
+                                                    Manifest.permission.READ_CALL_LOG
+                                                )
+                                            )
+                                        } else {
+                                            viewModel.setCallForwardingEnabled(true)
+                                            Toast.makeText(context, "Call Forwarding Enabled", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        viewModel.setCallForwardingEnabled(false)
+                                        Toast.makeText(context, "Call Forwarding Disabled", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF0284C7)
+                                )
+                            )
+                        }
+
+                        if (!hasCallPermissions && isCallForwardingEnabled) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Surface(
+                                color = Color(0xFFFEF2F2),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Phone & Call Log Permission Needed",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.5.sp,
+                                            color = Color(0xFF991B1B)
+                                        )
+                                        Text(
+                                            text = "Required by Android to detect callers and call duration.",
+                                            fontSize = 11.5.sp,
+                                            color = Color(0xFFB91C1C)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            callPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.READ_PHONE_STATE,
+                                                    Manifest.permission.READ_CALL_LOG
+                                                )
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 2. Permission Checklist Card
             item {
                 Card(
@@ -887,12 +1054,18 @@ fun ClientHomeScreen(
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         PermissionRow(
+                            label = "Phone & Call Log Detection",
+                            granted = hasCallPermissions,
+                            icon = Icons.Default.Phone
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        PermissionRow(
                             label = "Battery Optimization Disabled",
                             granted = isBatteryExempt,
                             icon = Icons.Default.BatteryAlert
                         )
 
-                        if (!hasSmsPermission || !hasNotificationPermission || !isBatteryExempt) {
+                        if (!hasSmsPermission || !hasNotificationPermission || !isBatteryExempt || !hasCallPermissions) {
                             Spacer(modifier = Modifier.height(18.dp))
                             Button(
                                 onClick = {
@@ -905,6 +1078,13 @@ fun ClientHomeScreen(
                                             list.add(Manifest.permission.POST_NOTIFICATIONS)
                                         }
                                         permissionLauncher.launch(list.toTypedArray())
+                                    } else if (!hasCallPermissions) {
+                                        callPermissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.READ_PHONE_STATE,
+                                                Manifest.permission.READ_CALL_LOG
+                                            )
+                                        )
                                     } else if (!isBatteryExempt) {
                                         try {
                                             val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {

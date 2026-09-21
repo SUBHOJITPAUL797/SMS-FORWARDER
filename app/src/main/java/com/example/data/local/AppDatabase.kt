@@ -6,12 +6,13 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [SmsQueueEntity::class],
-    version = 1,
+    entities = [SmsQueueEntity::class, CallQueueEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun smsQueueDao(): SmsQueueDao
+    abstract fun callQueueDao(): CallQueueDao
 
     companion object {
         @Volatile

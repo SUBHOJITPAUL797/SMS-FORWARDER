@@ -16,6 +16,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.remote.AuthSource
 import com.example.data.remote.FirestoreSource
 import com.example.data.repository.AuthRepository
+import com.example.data.repository.CallRepository
 import com.example.data.repository.PairingRepository
 import com.example.data.repository.SmsRepository
 import com.example.service.SmsBridgeFcmService
@@ -48,6 +49,8 @@ class SmsBridgeApp : Application() {
     lateinit var pairingRepository: PairingRepository
         private set
     lateinit var smsRepository: SmsRepository
+        private set
+    lateinit var callRepository: CallRepository
         private set
 
     override fun onCreate() {
@@ -82,6 +85,7 @@ class SmsBridgeApp : Application() {
         authRepository = AuthRepository(authSource, firestoreSource, preferencesRepository)
         pairingRepository = PairingRepository(authSource, firestoreSource, preferencesRepository)
         smsRepository = SmsRepository(this, database, firestoreSource, authSource, preferencesRepository)
+        callRepository = CallRepository(this, database, firestoreSource, authSource, preferencesRepository)
 
         // 3. Create Notification Channels
         createNotificationChannels()
@@ -123,8 +127,22 @@ class SmsBridgeApp : Application() {
                 setShowBadge(true)
             }
 
+            // Call Forward Alert Channel (High importance)
+            val callChannel = NotificationChannel(
+                "call_forward_alerts",
+                "Call Forward Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Instant notifications when incoming or missed calls are detected on Client phone"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 300, 150, 300)
+                setSound(defaultSoundUri, audioAttributes)
+                setShowBadge(true)
+            }
+
             notificationManager.createNotificationChannel(serviceChannel)
             notificationManager.createNotificationChannel(alertChannel)
+            notificationManager.createNotificationChannel(callChannel)
         }
     }
 

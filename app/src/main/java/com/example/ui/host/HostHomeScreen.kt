@@ -3,10 +3,21 @@ package com.example.ui.host
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CallMade
+import androidx.compose.material.icons.filled.CallMissed
+import androidx.compose.material.icons.filled.CallReceived
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PhoneDisabled
+import androidx.compose.material.icons.filled.SimCard
+import com.example.domain.model.CallRecord
+import com.example.domain.model.CallType
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -150,6 +161,11 @@ fun HostHomeScreen(
     val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedMessageIds by viewModel.selectedMessageIds.collectAsStateWithLifecycle()
 
+    val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
+    val rawCalls by viewModel.rawCalls.collectAsStateWithLifecycle()
+    val filteredCalls by viewModel.filteredCalls.collectAsStateWithLifecycle()
+    val unreadCallsCount by viewModel.unreadCallsCount.collectAsStateWithLifecycle()
+
     val pullToRefreshState = rememberPullToRefreshState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -159,6 +175,7 @@ fun HostHomeScreen(
     var isBatteryOptimized by remember { mutableStateOf(AutoStartPermissionHelper.isBatteryOptimized(context)) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var messageToDeleteSingle by remember { mutableStateOf<String?>(null) }
+    var callToDeleteSingle by remember { mutableStateOf<String?>(null) }
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var hasOverlayPermission by remember { mutableStateOf(FloatingOtpManager.canDrawOverlays(context)) }
 
@@ -298,6 +315,35 @@ fun HostHomeScreen(
         )
     }
 
+    // Confirmation dialog for single call delete
+    if (callToDeleteSingle != null) {
+        AlertDialog(
+            onDismissRequest = { callToDeleteSingle = null },
+            title = { Text("Delete Call Record?", fontWeight = FontWeight.Bold) },
+            text = { Text("Delete this call record permanently from device and cloud database?", fontSize = 14.sp) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        callToDeleteSingle?.let { callId ->
+                            viewModel.deleteSingleCall(callId) {
+                                Toast.makeText(context, "Call record deleted", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        callToDeleteSingle = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { callToDeleteSingle = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     // Permission Dialog for Display Over Other Apps
     if (showOverlayPermissionDialog) {
         AlertDialog(
@@ -410,7 +456,7 @@ fun HostHomeScreen(
                                     letterSpacing = (-0.3).sp,
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
-                                if (unreadCount > 0) {
+                                if (selectedTab == HostTab.MESSAGES && unreadCount > 0) {
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Surface(
                                         shape = RoundedCornerShape(100.dp),
@@ -424,19 +470,44 @@ fun HostHomeScreen(
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                         )
                                     }
+                                } else if (selectedTab == HostTab.CALLS && unreadCallsCount > 0) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(100.dp),
+                                        color = Color(0xFFFEE2E2)
+                                    ) {
+                                        Text(
+                                            text = "$unreadCallsCount new",
+                                            color = Color(0xFFDC2626),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         },
                         actions = {
-                            if (unreadCount > 0) {
+                            if (selectedTab == HostTab.MESSAGES && unreadCount > 0) {
                                 IconButton(
                                     onClick = { viewModel.markAllAsRead() },
                                     modifier = Modifier.testTag("mark_all_read_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.DoneAll,
-                                        contentDescription = "Mark all as read",
+                                        contentDescription = "Mark all messages as read",
                                         tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            } else if (selectedTab == HostTab.CALLS && unreadCallsCount > 0) {
+                                IconButton(
+                                    onClick = { viewModel.markAllCallsAsRead() },
+                                    modifier = Modifier.testTag("mark_all_calls_read_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DoneAll,
+                                        contentDescription = "Mark all calls as read",
+                                        tint = Color(0xFFDC2626)
                                     )
                                 }
                             }
@@ -911,13 +982,135 @@ fun HostHomeScreen(
                     thickness = 1.dp
                 )
 
+                // Segmented Tab Bar: [ 📩 Messages (N) | 📞 Calls (N) ]
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Messages Tab
+                        val isMessagesSelected = selectedTab == HostTab.MESSAGES
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isMessagesSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                            shadowElevation = if (isMessagesSelected) 2.dp else 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { viewModel.selectTab(HostTab.MESSAGES) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 10.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Sms,
+                                    contentDescription = null,
+                                    tint = if (isMessagesSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Messages",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isMessagesSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isMessagesSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (unreadCount > 0) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary
+                                    ) {
+                                        Text(
+                                            text = "$unreadCount",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                } else if (totalMessagesCount > 0) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "($totalMessagesCount)",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Calls Tab
+                        val isCallsSelected = selectedTab == HostTab.CALLS
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isCallsSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                            shadowElevation = if (isCallsSelected) 2.dp else 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { viewModel.selectTab(HostTab.CALLS) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 10.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Phone,
+                                    contentDescription = null,
+                                    tint = if (isCallsSelected) Color(0xFF0284C7) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Calls",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isCallsSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isCallsSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (unreadCallsCount > 0) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFDC2626)
+                                    ) {
+                                        Text(
+                                            text = "$unreadCallsCount",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                } else if (rawCalls.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "(${rawCalls.size})",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Search Bar
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { viewModel.onSearchQueryChanged(it) },
                     placeholder = {
                         Text(
-                            text = "Search sender or message content...",
+                            text = if (selectedTab == HostTab.MESSAGES) "Search sender or message content..." else "Search number, caller name or call type...",
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
@@ -945,7 +1138,7 @@ fun HostHomeScreen(
                     shape = RoundedCornerShape(20.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                         .testTag("host_search_input"),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -955,118 +1148,247 @@ fun HostHomeScreen(
                     )
                 )
 
-                // Message List or Empty State
-                if (pagedMessages.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                if (selectedTab == HostTab.MESSAGES) {
+                    // Message List or Empty State
+                    if (pagedMessages.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(76.dp)
-                                    .background(
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Sms,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(38.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .size(76.dp)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sms,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(38.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(18.dp))
+
+                                Text(
+                                    text = if (searchQuery.isNotEmpty()) "No matching messages found" else "Waiting for SMS from Client…",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Text(
+                                    text = if (searchQuery.isNotEmpty()) "Try searching for a different sender number or keyword." else "When an SMS is received on your linked Client device, it will automatically show up here in real time.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .testTag("host_sms_list"),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(pagedMessages, key = { it.messageId }) { msg ->
+                                val isSelected = selectedMessageIds.contains(msg.messageId)
+                                SmsCardItem(
+                                    message = msg,
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isSelected,
+                                    onToggleSelect = { viewModel.toggleSelection(msg.messageId) },
+                                    onLongClick = { viewModel.enterSelectionMode(msg.messageId) },
+                                    onMarkAsRead = { viewModel.markMessageAsRead(msg.messageId) },
+                                    onDelete = { messageToDeleteSingle = msg.messageId },
+                                    onCopy = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        val otpResult = OtpExtractor.extractOtp(msg.body)
+                                        if (otpResult.isOtp) {
+                                            val clip = ClipData.newPlainText("OTP", otpResult.otp)
+                                            clipboard.setPrimaryClip(clip)
+                                            Toast.makeText(context, "Copied OTP: ${otpResult.otp}", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            val clip = ClipData.newPlainText("SMS Body", msg.body)
+                                            clipboard.setPrimaryClip(clip)
+                                            Toast.makeText(context, "Copied SMS to clipboard", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(18.dp))
+                            // Lazy Loading Footer / Pagination Info
+                            item {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "Showing ${pagedMessages.size} of $totalMessagesCount messages",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    if (hasMoreMessages) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        OutlinedButton(
+                                            onClick = { viewModel.loadMoreMessages() },
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth(0.6f)
+                                        ) {
+                                            Text("Load More (${totalMessagesCount - pagedMessages.size} remaining)", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
 
-                            Text(
-                                text = if (searchQuery.isNotEmpty()) "No matching messages found" else "Waiting for SMS from Client…",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Text(
-                                text = if (searchQuery.isNotEmpty()) "Try searching for a different sender number or keyword." else "When an SMS is received on your linked Client device, it will automatically show up here in real time.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            )
+                            item {
+                                Spacer(modifier = Modifier.height(72.dp)) // Padding for FAB
+                            }
                         }
                     }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .testTag("host_sms_list"),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(pagedMessages, key = { it.messageId }) { msg ->
-                            val isSelected = selectedMessageIds.contains(msg.messageId)
-                            SmsCardItem(
-                                message = msg,
-                                isSelectionMode = isSelectionMode,
-                                isSelected = isSelected,
-                                onToggleSelect = { viewModel.toggleSelection(msg.messageId) },
-                                onLongClick = { viewModel.enterSelectionMode(msg.messageId) },
-                                onMarkAsRead = { viewModel.markMessageAsRead(msg.messageId) },
-                                onDelete = { messageToDeleteSingle = msg.messageId },
-                                onCopy = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val otpResult = OtpExtractor.extractOtp(msg.body)
-                                    if (otpResult.isOtp) {
-                                        val clip = ClipData.newPlainText("OTP", otpResult.otp)
-                                        clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, "Copied OTP: ${otpResult.otp}", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        val clip = ClipData.newPlainText("SMS Body", msg.body)
-                                        clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, "Copied SMS to clipboard", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            )
-                        }
-
-                        // Lazy Loading Footer / Pagination Info
-                        item {
+                    // CALLS TAB CONTENT
+                    if (filteredCalls.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(76.dp)
+                                        .background(
+                                            color = Color(0xFFE0F2FE),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Phone,
+                                        contentDescription = null,
+                                        tint = Color(0xFF0284C7),
+                                        modifier = Modifier.size(38.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(18.dp))
+
                                 Text(
-                                    text = "Showing ${pagedMessages.size} of $totalMessagesCount messages",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    fontWeight = FontWeight.Medium
+                                    text = if (searchQuery.isNotEmpty()) "No matching calls found" else "Waiting for Calls from Client…",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
                                 )
-                                if (hasMoreMessages) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedButton(
-                                        onClick = { viewModel.loadMoreMessages() },
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.fillMaxWidth(0.6f)
-                                    ) {
-                                        Text("Load More (${totalMessagesCount - pagedMessages.size} remaining)", fontSize = 12.sp)
+
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Text(
+                                    text = if (searchQuery.isNotEmpty()) "Try searching for a different number or caller name." else "When an incoming, missed, or outgoing call occurs on your linked Client device, its details will appear here automatically in real time.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .testTag("host_calls_list"),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Quick Call Metrics Chips
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val missedCount = rawCalls.count { it.callType == CallType.MISSED || it.callType == CallType.REJECTED }
+                                    val incomingCount = rawCalls.count { it.callType == CallType.INCOMING }
+                                    val outgoingCount = rawCalls.count { it.callType == CallType.OUTGOING }
+
+                                    CallMetricPill(
+                                        label = "Total",
+                                        count = rawCalls.size,
+                                        color = Color(0xFF0284C7),
+                                        bgColor = Color(0xFFE0F2FE)
+                                    )
+                                    CallMetricPill(
+                                        label = "Missed",
+                                        count = missedCount,
+                                        color = Color(0xFFDC2626),
+                                        bgColor = Color(0xFFFEE2E2)
+                                    )
+                                    CallMetricPill(
+                                        label = "Received",
+                                        count = incomingCount,
+                                        color = Color(0xFF16A34A),
+                                        bgColor = Color(0xFFDCFCE7)
+                                    )
+                                    if (outgoingCount > 0) {
+                                        CallMetricPill(
+                                            label = "Outgoing",
+                                            count = outgoingCount,
+                                            color = Color(0xFF7C3AED),
+                                            bgColor = Color(0xFFEDE9FE)
+                                        )
                                     }
                                 }
                             }
-                        }
 
-                        item {
-                            Spacer(modifier = Modifier.height(72.dp)) // Padding for FAB
+                            items(filteredCalls, key = { it.callId }) { call ->
+                                CallCardItem(
+                                    call = call,
+                                    onMarkAsRead = { viewModel.markCallAsRead(call.callId) },
+                                    onDelete = { callToDeleteSingle = call.callId },
+                                    onCallBack = {
+                                        try {
+                                            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${call.phoneNumber.trim()}")).apply {
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                            context.startActivity(dialIntent)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Cannot open dialer: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onCopyNumber = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", call.phoneNumber))
+                                        Toast.makeText(context, "Copied: ${call.phoneNumber}", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+
+                            item {
+                                Spacer(modifier = Modifier.height(72.dp)) // Padding for FAB
+                            }
                         }
                     }
                 }
@@ -1309,4 +1631,308 @@ private fun SmsCardItem(
         }
     }
 }
+
+@Composable
+private fun CallMetricPill(
+    label: String,
+    count: Int,
+    color: Color,
+    bgColor: Color
+) {
+    Surface(
+        shape = RoundedCornerShape(100.dp),
+        color = bgColor,
+        border = BorderStroke(1.dp, color.copy(alpha = 0.3f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = color
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "$count",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = color
+            )
+        }
+    }
+}
+
+@Composable
+private fun CallCardItem(
+    call: CallRecord,
+    onMarkAsRead: () -> Unit,
+    onDelete: () -> Unit,
+    onCallBack: () -> Unit,
+    onCopyNumber: () -> Unit
+) {
+    val formattedTime = remember(call.timestamp) {
+        val now = System.currentTimeMillis()
+        if (now - call.timestamp < DateUtils.DAY_IN_MILLIS) {
+            DateUtils.getRelativeTimeSpanString(
+                call.timestamp,
+                now,
+                DateUtils.MINUTE_IN_MILLIS
+            ).toString()
+        } else {
+            SimpleDateFormat("MMM d, yyyy · hh:mm a", Locale.getDefault()).format(Date(call.timestamp))
+        }
+    }
+
+    val isUnread = !call.read
+
+    // Type styling
+    val (typeLabel, typeColor, typeBg, typeIcon) = when (call.callType) {
+        CallType.MISSED -> Quadruple("Missed Call", Color(0xFFDC2626), Color(0xFFFEE2E2), Icons.Default.CallMissed)
+        CallType.INCOMING -> Quadruple("Incoming", Color(0xFF16A34A), Color(0xFFDCFCE7), Icons.Default.CallReceived)
+        CallType.OUTGOING -> Quadruple("Outgoing", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.CallMade)
+        CallType.REJECTED -> Quadruple("Declined", Color(0xFFD97706), Color(0xFFFEF3C7), Icons.Default.PhoneDisabled)
+    }
+
+    val displayName = call.contactName.trim().ifEmpty { call.phoneNumber.trim() }
+    val displayInitial = if (call.contactName.isNotBlank()) {
+        call.contactName.trim().first().uppercaseChar().toString()
+    } else {
+        "#"
+    }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isUnread) Color(0xFFEFF6FF) else Color.White
+        ),
+        border = BorderStroke(
+            width = if (isUnread) 1.5.dp else 1.dp,
+            color = if (isUnread) Color(0xFF93C5FD) else Color(0xFFE2E8F0)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isUnread) 2.dp else 0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                if (isUnread) onMarkAsRead()
+            }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Caller Initial Avatar with Type Badge
+                Box(modifier = Modifier.size(46.dp)) {
+                    Surface(
+                        shape = CircleShape,
+                        color = typeBg,
+                        border = BorderStroke(1.dp, typeColor.copy(alpha = 0.4f)),
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = displayInitial,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = typeColor
+                            )
+                        }
+                    }
+
+                    // Mini Call Type Badge in bottom right
+                    Surface(
+                        shape = CircleShape,
+                        color = typeColor,
+                        border = BorderStroke(1.5.dp, Color.White),
+                        modifier = Modifier
+                            .size(18.dp)
+                            .align(Alignment.BottomEnd)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = typeIcon,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(10.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Name / Phone / Badges
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = displayName,
+                            fontSize = 15.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = formattedTime,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF64748B)
+                            )
+                            if (isUnread) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(0xFF2563EB), CircleShape)
+                                )
+                            }
+                        }
+                    }
+
+                    if (call.contactName.isNotBlank() && call.phoneNumber.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = call.phoneNumber,
+                            fontSize = 12.5.sp,
+                            color = Color(0xFF475569),
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Tags: Call Type, Duration, SIM
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = typeBg
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = typeLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = typeColor
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFF1F5F9)
+                        ) {
+                            Text(
+                                text = call.formattedDuration(),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF334155),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFF1F5F9)
+                        ) {
+                            Text(
+                                text = "SIM ${call.simSlot}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF475569),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            HorizontalDivider(
+                color = Color(0xFFE2E8F0).copy(alpha = 0.7f),
+                thickness = 0.8.dp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Action Row: 1-Tap Call Back, Copy Number, Delete
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = onCallBack,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Phone,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Call Back", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+
+                    OutlinedButton(
+                        onClick = onCopyNumber,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = null,
+                            tint = Color(0xFF475569),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Copy", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                    }
+                }
+
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "Delete Call",
+                        tint = Color(0xFFDC2626).copy(alpha = 0.8f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
 
