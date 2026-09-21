@@ -196,8 +196,8 @@ class HostViewModel(
     val totalMessagesCount: StateFlow<Int> = filteredMessages.map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val hasMoreMessages: StateFlow<Boolean> = combine(filteredMessages, _displayLimit, _hasMoreCloudMessages) { list, limit, cloudMore ->
-        (list.size > limit) || cloudMore
+    val hasMoreMessages: StateFlow<Boolean> = combine(filteredMessages, _displayLimit, _hasMoreCloudMessages, _searchQuery) { list, limit, cloudMore, query ->
+        if (query.isNotBlank()) list.size > limit else (list.size > limit) || cloudMore
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun loadMoreMessages() {
@@ -243,8 +243,8 @@ class HostViewModel(
     val totalCallsCount: StateFlow<Int> = filteredCalls.map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val hasMoreCalls: StateFlow<Boolean> = combine(filteredCalls, _callsDisplayLimit, _hasMoreCloudCalls) { list, limit, cloudMore ->
-        (list.size > limit) || cloudMore
+    val hasMoreCalls: StateFlow<Boolean> = combine(filteredCalls, _callsDisplayLimit, _hasMoreCloudCalls, _searchQuery) { list, limit, cloudMore, query ->
+        if (query.isNotBlank()) list.size > limit else (list.size > limit) || cloudMore
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun loadMoreCalls() {

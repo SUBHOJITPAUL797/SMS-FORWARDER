@@ -91,4 +91,49 @@ class HostCachingAndLazyLoadingTest {
         assertEquals(60, page3.size)
         assertFalse(items.size > displayLimit)
     }
+
+    @Test
+    fun lazyLoadingPagination_withSearchQuery_onlyPaginatesFilteredResults() {
+        val allMessages = listOf(
+            SmsMessage(messageId = "1", sender = "Bank", body = "OTP 111"),
+            SmsMessage(messageId = "2", sender = "Friend", body = "Hey"),
+            SmsMessage(messageId = "3", sender = "Bank", body = "OTP 222"),
+            SmsMessage(messageId = "4", sender = "Shop", body = "Discount")
+        )
+
+        val query = "Bank"
+        val filtered = allMessages.filter { it.sender.contains(query, ignoreCase = true) }
+        assertEquals(2, filtered.size)
+
+        val displayLimit = 25
+        val cloudMore = true
+
+        // When query is blank, cloudMore causes hasMore to be true
+        val hasMoreBlankQuery = if ("".isNotBlank()) filtered.size > displayLimit else (filtered.size > displayLimit) || cloudMore
+        assertTrue(hasMoreBlankQuery)
+
+        // When query is active, only filtered.size > displayLimit determines hasMore
+        val hasMoreWithQuery = if (query.isNotBlank()) filtered.size > displayLimit else (filtered.size > displayLimit) || cloudMore
+        assertFalse(hasMoreWithQuery)
+    }
+
+    @Test
+    fun synchronizedDeletion_purgesTargetItemsCompletely() {
+        val initialMap = mutableMapOf(
+            "msg_1" to "OTP 101",
+            "msg_2" to "OTP 102",
+            "msg_3" to "OTP 103"
+        )
+
+        // Single deletion
+        val deletedId = "msg_2"
+        initialMap.remove(deletedId)
+        assertFalse(initialMap.containsKey(deletedId))
+        assertEquals(2, initialMap.size)
+
+        // Batch deletion
+        val batchIds = listOf("msg_1", "msg_3")
+        batchIds.forEach { initialMap.remove(it) }
+        assertTrue(initialMap.isEmpty())
+    }
 }

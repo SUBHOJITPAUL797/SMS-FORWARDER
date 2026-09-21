@@ -171,7 +171,11 @@ class CallRepository(
     // ----------------- Host Observation APIs -----------------
 
     fun startHostSync(hostCode: String) {
+        if (hostCode.isBlank()) return
         synchronized(hostCallSyncJobs) {
+            hostCallSyncJobs.keys.filter { it != hostCode }.forEach { oldCode ->
+                hostCallSyncJobs.remove(oldCode)?.cancel()
+            }
             if (hostCallSyncJobs[hostCode]?.isActive == true) return
             hostCallSyncJobs[hostCode] = repoScope.launch {
                 try {

@@ -281,6 +281,11 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     }
 
     fun observeSmsBatch(hostUid: String, limit: Long = 25): Flow<SmsSyncBatch> = callbackFlow {
+        if (hostUid.isBlank()) {
+            trySend(SmsSyncBatch(emptyList(), emptyList()))
+            close()
+            return@callbackFlow
+        }
         val listener = firestore.collection(COLLECTION_SMS)
             .document(hostUid)
             .collection("messages")
@@ -313,6 +318,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     }
 
     suspend fun fetchOlderSms(hostUid: String, beforeTimestamp: Long, limit: Long = 25): Result<List<SmsMessage>> {
+        if (hostUid.isBlank()) return Result.success(emptyList())
         return try {
             val snapshot = firestore.collection(COLLECTION_SMS)
                 .document(hostUid)
@@ -446,6 +452,11 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     }
 
     fun observeCallBatch(hostUid: String, limit: Long = 25): Flow<CallSyncBatch> = callbackFlow {
+        if (hostUid.isBlank()) {
+            trySend(CallSyncBatch(emptyList(), emptyList()))
+            close()
+            return@callbackFlow
+        }
         val listener = firestore.collection(COLLECTION_CALLS)
             .document(hostUid)
             .collection("calls")
@@ -478,6 +489,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     }
 
     suspend fun fetchOlderCalls(hostUid: String, beforeTimestamp: Long, limit: Long = 25): Result<List<CallRecord>> {
+        if (hostUid.isBlank()) return Result.success(emptyList())
         return try {
             val snapshot = firestore.collection(COLLECTION_CALLS)
                 .document(hostUid)

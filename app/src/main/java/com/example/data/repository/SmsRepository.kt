@@ -311,7 +311,11 @@ class SmsRepository(
     }
 
     fun startHostSync(hostCode: String) {
+        if (hostCode.isBlank()) return
         synchronized(hostSmsSyncJobs) {
+            hostSmsSyncJobs.keys.filter { it != hostCode }.forEach { oldCode ->
+                hostSmsSyncJobs.remove(oldCode)?.cancel()
+            }
             if (hostSmsSyncJobs[hostCode]?.isActive == true) return
             hostSmsSyncJobs[hostCode] = repoScope.launch {
                 try {
