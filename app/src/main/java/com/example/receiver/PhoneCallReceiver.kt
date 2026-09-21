@@ -204,9 +204,9 @@ class PhoneCallReceiver : BroadcastReceiver() {
                     else -> CallType.MISSED
                 }
 
-                // Check if this log entry occurred within the last 30 seconds
+                // Check if this log entry occurred within the last 60 seconds
                 val now = System.currentTimeMillis()
-                if (Math.abs(now - date) < 30_000L) {
+                if (Math.abs(now - date) < 60_000L) {
                     CallLogEntry(
                         number = number,
                         contactName = name,

@@ -46,7 +46,9 @@ data class CallRecord(
 
     fun formattedDuration(): String {
         return when {
-            callType == CallType.MISSED || durationSeconds <= 0 -> "Missed (0s)"
+            callType == CallType.MISSED -> "Missed (0s)"
+            callType == CallType.REJECTED -> "Rejected (0s)"
+            durationSeconds <= 0 -> "0s"
             durationSeconds < 60 -> "${durationSeconds}s"
             else -> {
                 val mins = durationSeconds / 60

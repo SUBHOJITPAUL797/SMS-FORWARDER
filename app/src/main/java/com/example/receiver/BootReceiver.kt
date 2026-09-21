@@ -58,6 +58,7 @@ class BootReceiver : BroadcastReceiver() {
                     }
                     userPrefs?.setServiceActive(true)
                     app?.smsRepository?.syncAllPendingMessages()
+                    app?.callRepository?.syncAllPendingCalls()  // Fix: also sync pending calls on boot
                     Log.i(TAG, "SmsBridgeService successfully dispatched on boot for role $role.")
                 } else {
                     Log.d(TAG, "Device role is UNSET ($role). Skipping automatic background service start.")

@@ -32,7 +32,7 @@ class ServiceWatchdogWorker(
             val isServiceSupposedToBeActive = userPrefs.isServiceActiveFlow.firstOrNull() ?: false
 
             if ((currentRole == UserRole.CLIENT || currentRole == UserRole.HOST) && isServiceSupposedToBeActive) {
-                val isRunning = isServiceRunning(applicationContext, SmsBridgeService::class.java)
+                val isRunning = SmsBridgeService.isRunning || isServiceRunning(applicationContext, SmsBridgeService::class.java)
                 Log.d(TAG, "Watchdog check: $currentRole mode active. Is SmsBridgeService running? $isRunning")
 
                 if (!isRunning) {

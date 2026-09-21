@@ -34,6 +34,8 @@ class SmsBridgeService : Service() {
         const val NOTIFICATION_ID = 1001
         private const val TAG = "SmsBridgeService"
         const val ACTION_STOP_SERVICE = "com.example.service.STOP_SERVICE"
+        @Volatile
+        var isRunning: Boolean = false
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -42,6 +44,7 @@ class SmsBridgeService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         Log.d(TAG, "SmsBridgeService onCreate()")
 
         // 1. Acquire partial wake lock to keep background processing responsive
@@ -268,6 +271,7 @@ class SmsBridgeService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "SmsBridgeService onDestroy()")
+        isRunning = false
         unregisterCallLogObserver()
         wakeLock?.let {
             if (it.isHeld) it.release()

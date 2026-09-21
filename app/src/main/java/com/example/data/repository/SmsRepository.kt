@@ -172,7 +172,10 @@ class SmsRepository(
         val pendingList = smsDao.getMessagesByStatus(QueueStatus.PENDING.name) +
                 smsDao.getMessagesByStatus(QueueStatus.FAILED.name)
         for (item in pendingList) {
-            uploadPendingMessage(item.messageId)
+            val result = uploadPendingMessage(item.messageId)
+            if (result.isFailure) {
+                smsDao.incrementRetryCount(item.messageId)
+            }
         }
     }
 
