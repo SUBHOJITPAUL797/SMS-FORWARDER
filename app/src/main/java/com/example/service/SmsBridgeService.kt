@@ -179,7 +179,29 @@ class SmsBridgeService : Service() {
             )
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
             val triggerTime = SystemClock.elapsedRealtime() + 1500L
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager?.canScheduleExactAlarms() == true) {
+                    try {
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                            triggerTime,
+                            restartPendingIntent
+                        )
+                    } catch (se: SecurityException) {
+                        alarmManager.setAndAllowWhileIdle(
+                            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                            triggerTime,
+                            restartPendingIntent
+                        )
+                    }
+                } else {
+                    alarmManager?.setAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        triggerTime,
+                        restartPendingIntent
+                    )
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager?.setExactAndAllowWhileIdle(
                     AlarmManager.ELAPSED_REALTIME_WAKEUP,
                     triggerTime,
