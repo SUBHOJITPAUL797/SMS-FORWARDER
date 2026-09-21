@@ -6,9 +6,11 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.SmsBridgeApp
 import com.example.data.local.QueueStatus
 import com.example.data.local.SmsQueueEntity
 import com.example.data.repository.AuthRepository
+import com.example.data.repository.CallRepository
 import com.example.data.repository.SmsRepository
 import com.example.service.SmsBridgeService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +24,8 @@ import java.util.UUID
 
 class ClientViewModel(
     private val authRepository: AuthRepository,
-    private val smsRepository: SmsRepository
+    private val smsRepository: SmsRepository,
+    private val callRepository: CallRepository = SmsBridgeApp.instance.callRepository
 ) : ViewModel() {
 
     private val _isServiceActive = MutableStateFlow(true)
@@ -38,6 +41,15 @@ class ClientViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val pendingCount: StateFlow<Int> = smsRepository.pendingCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val totalCallsCount: StateFlow<Int> = callRepository.totalQueueCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val uploadedCallsCount: StateFlow<Int> = callRepository.uploadedCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val pendingCallsCount: StateFlow<Int> = callRepository.pendingCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val recentLocalMessages: StateFlow<List<SmsQueueEntity>> = smsRepository.localQueueMessages
@@ -104,9 +116,24 @@ class ClientViewModel(
         }
     }
 
+    fun syncRealCallLog(
+        scope: com.example.data.repository.InboxSyncScope = com.example.data.repository.InboxSyncScope.ALL_TIME,
+        onResult: (com.example.data.repository.SyncResult?, Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val res = callRepository.syncRealDeviceCallLog(scope)
+            if (res.isSuccess) {
+                onResult(res.getOrNull(), true)
+            } else {
+                onResult(null, false)
+            }
+        }
+    }
+
     fun syncAllPending() {
         viewModelScope.launch {
             smsRepository.syncAllPendingMessages()
+            callRepository.syncAllPendingCalls()
         }
     }
 

@@ -66,15 +66,20 @@ class PhoneCallReceiver : BroadcastReceiver() {
                 val prevState = lastState
                 lastState = TelephonyManager.EXTRA_STATE_IDLE
 
-                if (prevState == TelephonyManager.EXTRA_STATE_RINGING) {
-                    // Ring to Idle without Offhook -> Missed or Rejected call
-                    processCallEnded(context, savedNumber, callStartTime, CallType.MISSED, 0)
+                val fallbackDuration = if (callStartTime > 0L) {
+                    ((System.currentTimeMillis() - callStartTime) / 1000L).toInt().coerceAtLeast(1)
+                } else 0
+
+                val fallbackType = if (prevState == TelephonyManager.EXTRA_STATE_RINGING) {
+                    CallType.MISSED
                 } else if (prevState == TelephonyManager.EXTRA_STATE_OFFHOOK) {
-                    // Offhook to Idle -> Call ended
-                    val duration = ((System.currentTimeMillis() - callStartTime) / 1000L).toInt().coerceAtLeast(1)
-                    val callType = if (isIncoming) CallType.INCOMING else CallType.OUTGOING
-                    processCallEnded(context, savedNumber, callStartTime, callType, duration)
+                    if (isIncoming) CallType.INCOMING else CallType.OUTGOING
+                } else {
+                    CallType.MISSED
                 }
+
+                // Always invoke processCallEnded to ensure calls are never dropped due to lost static state
+                processCallEnded(context, savedNumber, callStartTime, fallbackType, fallbackDuration)
 
                 // Reset state
                 savedNumber = null
@@ -97,7 +102,7 @@ class PhoneCallReceiver : BroadcastReceiver() {
         scope.launch {
             try {
                 // Short pause to let Android system finish writing to CallLog
-                kotlinx.coroutines.delay(1000L)
+                kotlinx.coroutines.delay(1200L)
 
                 var finalNumber = fallbackNumber ?: "Unknown"
                 var finalContactName = ""
@@ -115,13 +120,22 @@ class PhoneCallReceiver : BroadcastReceiver() {
                 if (hasCallLogPermission) {
                     val callLogInfo = queryLatestCallLog(context)
                     if (callLogInfo != null) {
-                        if (callLogInfo.number.isNotBlank()) finalNumber = callLogInfo.number
-                        if (callLogInfo.contactName.isNotBlank()) finalContactName = callLogInfo.contactName
-                        finalCallType = callLogInfo.callType
-                        finalDuration = callLogInfo.duration
-                        finalTimestamp = callLogInfo.date
-                        simSlot = callLogInfo.simSlot
+                        val now = System.currentTimeMillis()
+                        // If latest call in CallLog happened in the last 60 seconds, use system CallLog data
+                        if (Math.abs(now - callLogInfo.date) < 60_000L) {
+                            if (callLogInfo.number.isNotBlank()) finalNumber = callLogInfo.number
+                            if (callLogInfo.contactName.isNotBlank()) finalContactName = callLogInfo.contactName
+                            finalCallType = callLogInfo.callType
+                            finalDuration = callLogInfo.duration
+                            finalTimestamp = callLogInfo.date
+                            simSlot = callLogInfo.simSlot
+                        }
                     }
+                }
+
+                if (finalNumber == "Unknown" && finalNumber.isBlank()) {
+                    Log.d(TAG, "No call details found. Skipping spurious idle broadcast.")
+                    return@launch
                 }
 
                 val callId = "call_${UUID.randomUUID().toString().replace("-", "").take(16)}"

@@ -135,6 +135,9 @@ fun ClientHomeScreen(
     val linkedHostUid by viewModel.linkedHostUid.collectAsStateWithLifecycle()
     val isAutoStartConfigured by viewModel.isAutoStartConfigured.collectAsStateWithLifecycle()
     val isCallForwardingEnabled by viewModel.isCallForwardingEnabled.collectAsStateWithLifecycle()
+    val totalCallsCount by viewModel.totalCallsCount.collectAsStateWithLifecycle()
+    val uploadedCallsCount by viewModel.uploadedCallsCount.collectAsStateWithLifecycle()
+    val pendingCallsCount by viewModel.pendingCallsCount.collectAsStateWithLifecycle()
 
     var isServiceRunning by remember { mutableStateOf(true) }
     var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
@@ -143,6 +146,10 @@ fun ClientHomeScreen(
     var selectedSyncScope by remember { mutableStateOf(InboxSyncScope.ALL_TIME) }
     var isSyncingInbox by remember { mutableStateOf(false) }
 
+    var showCallSyncScopeDialog by remember { mutableStateOf(false) }
+    var selectedCallSyncScope by remember { mutableStateOf(InboxSyncScope.ALL_TIME) }
+    var isSyncingCalls by remember { mutableStateOf(false) }
+
     // Automatic update check in background on launch
     LaunchedEffect(Unit) {
         val info = UpdateChecker.checkForUpdates(context)
@@ -150,6 +157,8 @@ fun ClientHomeScreen(
             availableUpdate = info
         }
     }
+
+
 
     if (availableUpdate != null) {
         InAppUpdateDialog(
@@ -243,6 +252,92 @@ fun ClientHomeScreen(
         )
     }
 
+    // Call Log Sync Scope Selection Dialog
+    if (showCallSyncScopeDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isSyncingCalls) showCallSyncScopeDialog = false },
+            title = { Text("Sync Real Call Log History", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "Choose the date range or count of calls to import from your device's Call History and forward to your Host:",
+                        fontSize = 13.sp,
+                        color = Color(0xFF49454F)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    InboxSyncScope.entries.forEach { scopeOption ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { selectedCallSyncScope = scopeOption }
+                                .padding(vertical = 4.dp, horizontal = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = (selectedCallSyncScope == scopeOption),
+                                onClick = { selectedCallSyncScope = scopeOption },
+                                colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF0284C7))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = scopeOption.label,
+                                fontSize = 13.sp,
+                                fontWeight = if (selectedCallSyncScope == scopeOption) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selectedCallSyncScope == scopeOption) Color(0xFF0284C7) else Color(0xFF1D1B20)
+                            )
+                        }
+                    }
+
+                    if (isSyncingCalls) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFF0284C7))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Importing & forwarding call records...", fontSize = 12.sp, color = Color(0xFF0284C7))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isSyncingCalls = true
+                        viewModel.syncRealCallLog(selectedCallSyncScope) { result, success ->
+                            isSyncingCalls = false
+                            showCallSyncScopeDialog = false
+                            if (success && result != null) {
+                                Toast.makeText(
+                                    context,
+                                    "✅ Call Log Scanned: ${result.totalFound} found, ${result.newImported} newly queued, ${result.alreadyExisted} already in DB",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(context, "Failed to read device Call Log", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    enabled = !isSyncingCalls
+                ) {
+                    Text("Start Sync", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                if (!isSyncingCalls) {
+                    TextButton(onClick = { showCallSyncScopeDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
+
     // Permission states
     var hasSmsPermission by remember {
         mutableStateOf(
@@ -274,6 +369,11 @@ fun ClientHomeScreen(
         if (hasCallPermissions) {
             viewModel.setCallForwardingEnabled(true)
             Toast.makeText(context, "Call Forwarding Enabled with Call Log access", Toast.LENGTH_SHORT).show()
+            viewModel.syncRealCallLog(InboxSyncScope.LAST_30_DAYS) { result, success ->
+                if (success && result != null && result.newImported > 0) {
+                    Toast.makeText(context, "✅ Synced ${result.newImported} calls to Host", Toast.LENGTH_SHORT).show()
+                }
+            }
         } else {
             Toast.makeText(context, "Phone & Call Log permissions are needed to detect incoming calls.", Toast.LENGTH_LONG).show()
         }
@@ -343,6 +443,13 @@ fun ClientHomeScreen(
         } else {
             viewModel.toggleService(context, true)
             isServiceRunning = true
+        }
+    }
+
+    // Automatic initial call sync for legacy users when Call Forwarding is enabled and permission granted
+    LaunchedEffect(isCallForwardingEnabled, hasCallPermissions) {
+        if (isCallForwardingEnabled && hasCallPermissions && totalCallsCount == 0 && !isSyncingCalls) {
+            viewModel.syncRealCallLog(InboxSyncScope.LAST_30_DAYS) { _, _ -> }
         }
     }
 
@@ -1012,6 +1119,59 @@ fun ClientHomeScreen(
                                         modifier = Modifier.height(30.dp)
                                     ) {
                                         Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        if (hasCallPermissions && isCallForwardingEnabled) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Surface(
+                                color = Color(0xFFF0F9FF),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Call History Forwarding",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.5.sp,
+                                                color = Color(0xFF0369A1)
+                                            )
+                                            Text(
+                                                text = "Uploaded: $uploadedCallsCount · Pending: $pendingCallsCount",
+                                                fontSize = 11.5.sp,
+                                                color = Color(0xFF0284C7)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Button(
+                                            onClick = { showCallSyncScopeDialog = true },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(30.dp),
+                                            enabled = !isSyncingCalls
+                                        ) {
+                                            if (isSyncingCalls) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(14.dp),
+                                                    strokeWidth = 1.5.dp,
+                                                    color = Color.White
+                                                )
+                                            } else {
+                                                Text("Sync Calls", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
                                     }
                                 }
                             }

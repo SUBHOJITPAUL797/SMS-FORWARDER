@@ -22,6 +22,9 @@ interface CallQueueDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(entity: CallQueueEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(entities: List<CallQueueEntity>)
+
     @Query("DELETE FROM call_queue WHERE callId = :callId")
     suspend fun deleteByCallId(callId: String)
 
@@ -39,6 +42,9 @@ interface CallQueueDao {
 
     @Query("SELECT COUNT(*) FROM call_queue")
     fun getTotalCountFlow(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM call_queue WHERE status = 'UPLOADED'")
+    fun getUploadedCountFlow(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM call_queue WHERE status = 'PENDING'")
     fun getPendingCountFlow(): Flow<Int>

@@ -1,8 +1,12 @@
 package com.example.data.repository
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.CallLog
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.example.data.datastore.UserPreferencesRepository
 import com.example.data.local.AppDatabase
 import com.example.data.local.CallQueueEntity
@@ -48,6 +52,7 @@ class CallRepository(
     private val hostCallSyncJobs = mutableMapOf<String, Job>()
 
     val totalQueueCount: Flow<Int> = callDao.getTotalCountFlow()
+    val uploadedCount: Flow<Int> = callDao.getUploadedCountFlow()
     val pendingCount: Flow<Int> = callDao.getPendingCountFlow()
     val localQueueCalls: Flow<List<CallQueueEntity>> = callDao.getAllCalls()
 
@@ -166,6 +171,235 @@ class CallRepository(
 
         Log.i(TAG, "Sync complete: $successCount / ${pending.size} calls uploaded")
         return successCount
+    }
+
+    private fun mapCallType(typeInt: Int): CallType {
+        return when (typeInt) {
+            CallLog.Calls.INCOMING_TYPE -> CallType.INCOMING
+            CallLog.Calls.OUTGOING_TYPE -> CallType.OUTGOING
+            CallLog.Calls.MISSED_TYPE -> CallType.MISSED
+            CallLog.Calls.REJECTED_TYPE -> CallType.REJECTED
+            else -> CallType.MISSED
+        }
+    }
+
+    private fun generateCallId(phoneNumber: String, timestamp: Long, type: CallType): String {
+        val cleanNum = phoneNumber.filter { it.isDigit() }.takeLast(8)
+        val hash = Math.abs("${cleanNum}_${type.name}_$timestamp".hashCode())
+        return "call_${timestamp}_$hash"
+    }
+
+    /**
+     * Scans real call log history from Android's CallLog ContentProvider and forwards to the paired Host.
+     */
+    suspend fun syncRealDeviceCallLog(scope: InboxSyncScope = InboxSyncScope.ALL_TIME): Result<SyncResult> {
+        return try {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+                return Result.failure(SecurityException("READ_CALL_LOG permission not granted"))
+            }
+
+            val contentResolver = context.contentResolver
+            val uri = CallLog.Calls.CONTENT_URI
+            val projection = arrayOf(
+                CallLog.Calls._ID,
+                CallLog.Calls.NUMBER,
+                CallLog.Calls.CACHED_NAME,
+                CallLog.Calls.TYPE,
+                CallLog.Calls.DURATION,
+                CallLog.Calls.DATE
+            )
+
+            var selection: String? = null
+            var selectionArgs: Array<String>? = null
+            if (scope.daysLimit != null) {
+                val cutoff = System.currentTimeMillis() - (scope.daysLimit * 24 * 3600 * 1000L)
+                selection = "${CallLog.Calls.DATE} >= ?"
+                selectionArgs = arrayOf(cutoff.toString())
+            }
+
+            val cursor = contentResolver.query(
+                uri,
+                projection,
+                selection,
+                selectionArgs,
+                "${CallLog.Calls.DATE} DESC"
+            )
+
+            var totalFound = 0
+            var newImported = 0
+            var alreadyExisted = 0
+            val pendingEntities = mutableListOf<CallQueueEntity>()
+            val hostUid = preferencesRepository.linkedUidFlow.firstOrNull()
+            val clientUid = preferencesRepository.getOrCreateDeviceUid()
+            val clientDeviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+
+            cursor?.use { c ->
+                val numberCol = c.getColumnIndex(CallLog.Calls.NUMBER)
+                val nameCol = c.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                val typeCol = c.getColumnIndex(CallLog.Calls.TYPE)
+                val durationCol = c.getColumnIndex(CallLog.Calls.DURATION)
+                val dateCol = c.getColumnIndex(CallLog.Calls.DATE)
+
+                while (c.moveToNext()) {
+                    if (scope.maxCount != null && totalFound >= scope.maxCount) {
+                        break
+                    }
+                    totalFound++
+
+                    val number = if (numberCol >= 0) c.getString(numberCol) ?: "Unknown" else "Unknown"
+                    val name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
+                    val typeInt = if (typeCol >= 0) c.getInt(typeCol) else CallLog.Calls.MISSED_TYPE
+                    val duration = if (durationCol >= 0) c.getInt(durationCol) else 0
+                    val date = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+
+                    val callType = mapCallType(typeInt)
+                    val callId = generateCallId(number, date, callType)
+
+                    val existing = callDao.getByCallId(callId)
+                    if (existing == null) {
+                        val entity = CallQueueEntity(
+                            callId = callId,
+                            phoneNumber = number,
+                            contactName = name,
+                            callType = callType.name,
+                            durationSeconds = duration,
+                            timestamp = date,
+                            simSlot = 1,
+                            status = QueueStatus.PENDING.name,
+                            retryCount = 0
+                        )
+                        pendingEntities.add(entity)
+                        newImported++
+                    } else {
+                        alreadyExisted++
+                    }
+                }
+            }
+
+            if (pendingEntities.isNotEmpty()) {
+                callDao.insertAll(pendingEntities)
+            }
+
+            // Immediately batch-upload to Firestore if host is linked
+            if (!hostUid.isNullOrEmpty() && pendingEntities.isNotEmpty()) {
+                val chunks = pendingEntities.chunked(25)
+                for (chunk in chunks) {
+                    for (entity in chunk) {
+                        val record = CallRecord(
+                            callId = entity.callId,
+                            phoneNumber = entity.phoneNumber,
+                            contactName = entity.contactName,
+                            callType = CallType.fromString(entity.callType),
+                            durationSeconds = entity.durationSeconds,
+                            timestamp = entity.timestamp,
+                            uploadedAt = System.currentTimeMillis(),
+                            clientUid = clientUid,
+                            clientDeviceName = clientDeviceName,
+                            simSlot = entity.simSlot,
+                            read = false
+                        )
+                        val uploadRes = firestoreSource.uploadCall(hostUid, record)
+                        if (uploadRes.isSuccess) {
+                            callDao.updateStatus(entity.callId, QueueStatus.UPLOADED.name)
+                        }
+                    }
+                    kotlinx.coroutines.delay(20)
+                }
+            }
+
+            Result.success(SyncResult(totalFound, newImported, alreadyExisted))
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing real device call log", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Syncs latest N calls from CallLog (used by CallLogObserver and PhoneCallReceiver).
+     */
+    suspend fun syncLatestRecentCalls(limit: Int = 5): Int {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+            return 0
+        }
+        val hostUid = preferencesRepository.linkedUidFlow.firstOrNull() ?: return 0
+        val clientUid = preferencesRepository.getOrCreateDeviceUid()
+        val clientDeviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+
+        return try {
+            val projection = arrayOf(
+                CallLog.Calls._ID,
+                CallLog.Calls.NUMBER,
+                CallLog.Calls.CACHED_NAME,
+                CallLog.Calls.TYPE,
+                CallLog.Calls.DURATION,
+                CallLog.Calls.DATE
+            )
+            val cursor = context.contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${CallLog.Calls.DATE} DESC"
+            )
+            var count = 0
+            cursor?.use { c ->
+                val numberCol = c.getColumnIndex(CallLog.Calls.NUMBER)
+                val nameCol = c.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                val typeCol = c.getColumnIndex(CallLog.Calls.TYPE)
+                val durationCol = c.getColumnIndex(CallLog.Calls.DURATION)
+                val dateCol = c.getColumnIndex(CallLog.Calls.DATE)
+
+                while (c.moveToNext() && count < limit) {
+                    val number = if (numberCol >= 0) c.getString(numberCol) ?: "Unknown" else "Unknown"
+                    val name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
+                    val typeInt = if (typeCol >= 0) c.getInt(typeCol) else CallLog.Calls.MISSED_TYPE
+                    val duration = if (durationCol >= 0) c.getInt(durationCol) else 0
+                    val date = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
+
+                    val callType = mapCallType(typeInt)
+                    val callId = generateCallId(number, date, callType)
+
+                    val existing = callDao.getByCallId(callId)
+                    if (existing == null) {
+                        val entity = CallQueueEntity(
+                            callId = callId,
+                            phoneNumber = number,
+                            contactName = name,
+                            callType = callType.name,
+                            durationSeconds = duration,
+                            timestamp = date,
+                            simSlot = 1,
+                            status = QueueStatus.PENDING.name,
+                            retryCount = 0
+                        )
+                        callDao.insert(entity)
+
+                        val record = CallRecord(
+                            callId = callId,
+                            phoneNumber = number,
+                            contactName = name,
+                            callType = callType,
+                            durationSeconds = duration,
+                            timestamp = date,
+                            uploadedAt = System.currentTimeMillis(),
+                            clientUid = clientUid,
+                            clientDeviceName = clientDeviceName,
+                            simSlot = 1,
+                            read = false
+                        )
+                        val res = firestoreSource.uploadCall(hostUid, record)
+                        if (res.isSuccess) {
+                            callDao.updateStatus(callId, QueueStatus.UPLOADED.name)
+                        }
+                        count++
+                    }
+                }
+            }
+            count
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in syncLatestRecentCalls", e)
+            0
+        }
     }
 
     // ----------------- Host Observation APIs -----------------

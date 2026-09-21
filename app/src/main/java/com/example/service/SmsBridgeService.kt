@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
 import android.app.AlarmManager
@@ -146,8 +147,53 @@ class SmsBridgeService : Service() {
                     hostListenerJob = null
                     app.smsRepository.syncAllPendingMessages()
                     app.callRepository.syncAllPendingCalls()
+                    registerCallLogObserver()
                 }
             }
+        }
+    }
+
+    private var callLogObserver: android.database.ContentObserver? = null
+
+    private fun registerCallLogObserver() {
+        if (callLogObserver != null) return
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALL_LOG) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        try {
+            val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean, uri: android.net.Uri?) {
+                    super.onChange(selfChange, uri)
+                    serviceScope.launch {
+                        try {
+                            val app = applicationContext as? SmsBridgeApp ?: return@launch
+                            val isEnabled = app.preferencesRepository.isCallForwardingEnabledFlow.firstOrNull() ?: true
+                            if (isEnabled) {
+                                kotlinx.coroutines.delay(1200L) // Brief delay for system CallLog write completion
+                                app.callRepository.syncLatestRecentCalls(limit = 3)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error in CallLogObserver onChange", e)
+                        }
+                    }
+                }
+            }
+            contentResolver.registerContentObserver(android.provider.CallLog.Calls.CONTENT_URI, true, observer)
+            callLogObserver = observer
+            Log.i(TAG, "Registered real-time CallLogObserver on Client")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register CallLogObserver", e)
+        }
+    }
+
+    private fun unregisterCallLogObserver() {
+        callLogObserver?.let {
+            try {
+                contentResolver.unregisterContentObserver(it)
+            } catch (e: Exception) {
+                // Ignore
+            }
+            callLogObserver = null
         }
     }
 
@@ -222,6 +268,7 @@ class SmsBridgeService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "SmsBridgeService onDestroy()")
+        unregisterCallLogObserver()
         wakeLock?.let {
             if (it.isHeld) it.release()
         }
