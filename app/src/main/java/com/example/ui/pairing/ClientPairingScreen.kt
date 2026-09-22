@@ -58,6 +58,24 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.model.PairingState
 import com.example.util.QrCodeUtils
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientPairingScreen(
@@ -65,7 +83,30 @@ fun ClientPairingScreen(
     onNavigateBack: () -> Unit,
     onPairingComplete: () -> Unit
 ) {
+    val context = LocalContext.current
     val state by viewModel.clientState.collectAsStateWithLifecycle()
+
+    var showQrScanner by remember { mutableStateOf(false) }
+    var showManualCodeDialog by remember { mutableStateOf(false) }
+    var manualHostCodeInput by remember { mutableStateOf("") }
+    var isConnectingManual by remember { mutableStateOf(false) }
+
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCameraPermission = isGranted
+        if (isGranted) {
+            showQrScanner = true
+        } else {
+            Toast.makeText(context, "Camera permission is required to scan the Host QR code.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.generateClientCode()
@@ -77,10 +118,75 @@ fun ClientPairingScreen(
         }
     }
 
+    // Full-screen CameraX QR Scanner overlay to scan Host's QR code
+    if (showQrScanner) {
+        QrScannerOverlay(
+            onCodeScanned = { rawValue ->
+                val parsed = QrCodeUtils.parseScannedQr(rawValue)
+                if (parsed != null) {
+                    showQrScanner = false
+                    Toast.makeText(context, "Scanned Host Code: $parsed. Connecting...", Toast.LENGTH_SHORT).show()
+                    viewModel.directPairClientToHost(parsed)
+                }
+            },
+            onDismiss = { showQrScanner = false }
+        )
+        return
+    }
+
+    // Dialog to enter Host Code manually
+    if (showManualCodeDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isConnectingManual) showManualCodeDialog = false },
+            title = { Text("Connect to Host", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "Enter the 6-character Host Code displayed on your Host (Receiver) device:",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = manualHostCodeInput,
+                        onValueChange = {
+                            if (it.length <= 8) manualHostCodeInput = it.uppercase()
+                        },
+                        label = { Text("Host Code (e.g. 6 chars)") },
+                        placeholder = { Text("e.g. R44MQG") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = manualHostCodeInput.trim().uppercase()
+                        if (clean.length >= 4) {
+                            showManualCodeDialog = false
+                            viewModel.directPairClientToHost(clean)
+                        } else {
+                            Toast.makeText(context, "Please enter a valid Host Code.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = manualHostCodeInput.trim().isNotEmpty()
+                ) {
+                    Text("Connect", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showManualCodeDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Pairing as Client", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Pair as Client (Sender)", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
@@ -114,36 +220,107 @@ fun ClientPairingScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(68.dp)
-                        .background(color = Color(0xFFEADDFF), shape = CircleShape),
+                        .size(64.dp)
+                        .background(color = Color(0xFFC2E7FF), shape = CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.QrCode,
+                        imageVector = Icons.Default.Sensors,
                         contentDescription = null,
-                        tint = Color(0xFF6750A4),
-                        modifier = Modifier.size(38.dp)
+                        tint = Color(0xFF00668B),
+                        modifier = Modifier.size(36.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = "Client Pairing Code",
+                    text = "Link to Host Device",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
 
                 Text(
-                    text = "Share this 6-digit code with your Host device to complete link.",
+                    text = "Point this camera at your Host phone's QR code to link and forward SMS instantly.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 6.dp, start = 12.dp, end = 12.dp)
+                    modifier = Modifier.padding(top = 4.dp, start = 12.dp, end = 12.dp)
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // PRIMARY ACTION: SCAN HOST QR CODE
+                Button(
+                    onClick = {
+                        if (hasCameraPermission) {
+                            showQrScanner = true
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00668B)),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Scan Host QR Code to Connect",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = { showManualCodeDialog = true },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Keyboard,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Enter Host Code Manually", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Divider: OR SHOW CODE TO HOST
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                    )
+                    Text(
+                        text = "  OR SHOW CODE TO HOST  ",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        letterSpacing = 0.8.sp
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Card(
                     shape = RoundedCornerShape(24.dp),

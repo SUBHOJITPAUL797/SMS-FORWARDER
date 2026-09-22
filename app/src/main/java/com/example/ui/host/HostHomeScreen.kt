@@ -1439,47 +1439,6 @@ fun HostHomeScreen(
                         }
                     }
                 }
-
-                // Fullscreen View Toggle Pill
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Setup Dashboard Active",
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                        modifier = Modifier.clickable { isFullscreenView = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = "Fullscreen Messages/Calls",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Fullscreen View (Hide Setup)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
             }
 
                 HorizontalDivider(
@@ -2251,35 +2210,11 @@ private fun SmsCardItem(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = if (expanded) "Tap to collapse" else "Tap to expand",
-                            fontSize = 11.sp,
-                            color = if (isUnread) Color(0xFF21005D).copy(alpha = 0.7f) else Color(0xFF49454F).copy(alpha = 0.7f)
-                        )
-
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                            modifier = Modifier.clickable { onOpenFullscreen() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "⛶ Fullscreen",
-                                    fontSize = 10.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        text = if (expanded) "Tap to collapse" else "Tap to expand",
+                        fontSize = 11.sp,
+                        color = if (isUnread) Color(0xFF21005D).copy(alpha = 0.7f) else Color(0xFF49454F).copy(alpha = 0.7f)
+                    )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
@@ -3182,11 +3117,11 @@ private fun HostQrCodeDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = "Point Client phone's camera at this QR code, or scan a Client's QR code below:",
-                    fontSize = 12.sp,
+                    text = "On your other phone in Sender (Client) Mode, tap 'Scan Host QR' to scan this code and connect instantly!",
+                    fontSize = 12.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    lineHeight = 16.sp
+                    lineHeight = 17.sp
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -3209,7 +3144,7 @@ private fun HostQrCodeDialog(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Scan Client", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        Text("Or Scan Client's QR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Button(

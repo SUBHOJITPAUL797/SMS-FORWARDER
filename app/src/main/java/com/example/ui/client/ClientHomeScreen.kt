@@ -40,11 +40,14 @@ import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
+import com.example.ui.pairing.QrScannerOverlay
+import com.example.util.QrCodeUtils
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -149,6 +152,42 @@ fun ClientHomeScreen(
     var showCallSyncScopeDialog by remember { mutableStateOf(false) }
     var selectedCallSyncScope by remember { mutableStateOf(InboxSyncScope.ALL_TIME) }
     var isSyncingCalls by remember { mutableStateOf(false) }
+
+    var showHostQrScanner by remember { mutableStateOf(false) }
+    var hasCameraPermissionForHost by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val cameraPermissionLauncherForHost = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCameraPermissionForHost = isGranted
+        if (isGranted) {
+            showHostQrScanner = true
+        } else {
+            Toast.makeText(context, "Camera permission needed to scan Host QR code", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // CameraX QR Scanner overlay to scan Host's QR code
+    if (showHostQrScanner) {
+        QrScannerOverlay(
+            onCodeScanned = { rawValue ->
+                val parsed = QrCodeUtils.parseScannedQr(rawValue)
+                if (parsed != null) {
+                    showHostQrScanner = false
+                    Toast.makeText(context, "Scanned Host Code: $parsed. Connecting...", Toast.LENGTH_SHORT).show()
+                    viewModel.updateLinkedHostCode(parsed) { success, msg ->
+                        Toast.makeText(context, if (success) "Connected to Host ($parsed)!" else msg, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            onDismiss = { showHostQrScanner = false }
+        )
+        return
+    }
 
     // Automatic update check in background on launch
     LaunchedEffect(Unit) {
@@ -819,18 +858,44 @@ fun ClientHomeScreen(
                             )
                         }
 
-                        FilledTonalButton(
-                            onClick = {
-                                newHostCodeInput = linkedHostUid ?: ""
-                                showChangeDialog = true
-                            },
-                            shape = RoundedCornerShape(12.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = if (isHostLinked) "Change Host" else "Set Host Code",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            OutlinedButton(
+                                onClick = {
+                                    if (hasCameraPermissionForHost) {
+                                        showHostQrScanner = true
+                                    } else {
+                                        cameraPermissionLauncherForHost.launch(Manifest.permission.CAMERA)
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.QrCodeScanner,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Scan QR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            FilledTonalButton(
+                                onClick = {
+                                    newHostCodeInput = linkedHostUid ?: ""
+                                    showChangeDialog = true
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = if (isHostLinked) "Change" else "Enter Code",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
@@ -843,8 +908,26 @@ fun ClientHomeScreen(
                         title = { Text("Set Host Channel Code", fontWeight = FontWeight.Bold) },
                         text = {
                             Column {
+                                Button(
+                                    onClick = {
+                                        showChangeDialog = false
+                                        if (hasCameraPermissionForHost) {
+                                            showHostQrScanner = true
+                                        } else {
+                                            cameraPermissionLauncherForHost.launch(Manifest.permission.CAMERA)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00668B)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                                ) {
+                                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Scan Host QR with Camera", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                }
+
                                 Text(
-                                    "Enter the 6-character Host Code displayed at the top of your Host phone's screen:",
+                                    "Or enter the 6-character Host Code displayed at the top of your Host phone's screen:",
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -857,7 +940,7 @@ fun ClientHomeScreen(
                                         }
                                     },
                                     label = { Text("Host Code (e.g. 6 chars)") },
-                                    placeholder = { Text("e.g. A3K9X2") },
+                                    placeholder = { Text("e.g. R44MQG") },
                                     singleLine = true,
                                     enabled = !isConnecting,
                                     modifier = Modifier.fillMaxWidth()
