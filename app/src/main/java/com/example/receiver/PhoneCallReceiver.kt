@@ -104,7 +104,7 @@ class PhoneCallReceiver : BroadcastReceiver() {
                 // Short pause to let Android system finish writing to CallLog
                 kotlinx.coroutines.delay(1200L)
 
-                var finalNumber = fallbackNumber ?: "Unknown"
+                var finalNumber = fallbackNumber ?: ""
                 var finalContactName = ""
                 var finalCallType = fallbackType
                 var finalDuration = fallbackDuration
@@ -118,27 +118,36 @@ class PhoneCallReceiver : BroadcastReceiver() {
                 ) == PackageManager.PERMISSION_GRANTED
 
                 if (hasCallLogPermission) {
-                    val callLogInfo = queryLatestCallLog(context)
+                    var callLogInfo = queryLatestCallLog(context)
+                    // If not resolved on first check, wait another 1500ms and retry (for slower OEM skins like MIUI/HyperOS)
+                    if (callLogInfo == null) {
+                        kotlinx.coroutines.delay(1500L)
+                        callLogInfo = queryLatestCallLog(context)
+                    }
+
                     if (callLogInfo != null) {
-                        val now = System.currentTimeMillis()
-                        // If latest call in CallLog happened in the last 60 seconds, use system CallLog data
-                        if (Math.abs(now - callLogInfo.date) < 60_000L) {
-                            if (callLogInfo.number.isNotBlank()) finalNumber = callLogInfo.number
-                            if (callLogInfo.contactName.isNotBlank()) finalContactName = callLogInfo.contactName
-                            finalCallType = callLogInfo.callType
-                            finalDuration = callLogInfo.duration
-                            finalTimestamp = callLogInfo.date
-                            simSlot = callLogInfo.simSlot
-                        }
+                        if (callLogInfo.number.isNotBlank()) finalNumber = callLogInfo.number
+                        if (callLogInfo.contactName.isNotBlank()) finalContactName = callLogInfo.contactName
+                        finalCallType = callLogInfo.callType
+                        finalDuration = callLogInfo.duration
+                        finalTimestamp = callLogInfo.date
+                        simSlot = callLogInfo.simSlot
                     }
                 }
 
-                if (finalContactName.isBlank() && finalNumber.isNotBlank() && finalNumber != "Unknown") {
+                // Resolve contact name if still blank
+                if (finalContactName.isBlank() && finalNumber.isNotBlank() && !finalNumber.equals("Unknown", ignoreCase = true)) {
                     finalContactName = com.example.util.ContactUtils.resolveContactName(context, finalNumber)
                 }
 
-                if (finalNumber == "Unknown" && finalNumber.isBlank()) {
-                    Log.d(TAG, "No call details found. Skipping spurious idle broadcast.")
+                // Check if number is valid - NEVER forward blank, unknown, or spurious fake calls
+                val isInvalidNumber = finalNumber.isBlank() ||
+                        finalNumber.equals("Unknown", ignoreCase = true) ||
+                        finalNumber == "-1" || finalNumber == "-2" || finalNumber == "-3" ||
+                        finalNumber.equals("private", ignoreCase = true)
+
+                if (isInvalidNumber) {
+                    Log.w(TAG, "No valid phone number resolved for call event (number='$finalNumber'). Skipping forwarding to prevent fake/unknown call logs.")
                     return@launch
                 }
 
@@ -193,38 +202,54 @@ class PhoneCallReceiver : BroadcastReceiver() {
                 "${CallLog.Calls.DATE} DESC"
             )
 
-            if (cursor != null && cursor.moveToFirst()) {
-                val number = cursor.getString(cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER)) ?: ""
-                val name = cursor.getString(cursor.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME)) ?: ""
-                val typeInt = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.TYPE))
-                val duration = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION))
-                val date = cursor.getLong(cursor.getColumnIndexOrThrow(CallLog.Calls.DATE))
-
-                val callType = when (typeInt) {
-                    CallLog.Calls.INCOMING_TYPE -> CallType.INCOMING
-                    CallLog.Calls.OUTGOING_TYPE -> CallType.OUTGOING
-                    CallLog.Calls.MISSED_TYPE -> CallType.MISSED
-                    CallLog.Calls.REJECTED_TYPE -> CallType.REJECTED
-                    else -> CallType.MISSED
-                }
-
-                // Check if this log entry occurred within the last 60 seconds
+            if (cursor != null) {
                 val now = System.currentTimeMillis()
-                if (Math.abs(now - date) < 60_000L) {
-                    CallLogEntry(
-                        number = number,
-                        contactName = name,
-                        callType = callType,
-                        duration = duration,
-                        date = date,
-                        simSlot = 1
-                    )
-                } else {
-                    null
+                var scanned = 0
+                val numberIdx = cursor.getColumnIndex(CallLog.Calls.NUMBER)
+                val nameIdx = cursor.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                val typeIdx = cursor.getColumnIndex(CallLog.Calls.TYPE)
+                val durationIdx = cursor.getColumnIndex(CallLog.Calls.DURATION)
+                val dateIdx = cursor.getColumnIndex(CallLog.Calls.DATE)
+
+                while (cursor.moveToNext() && scanned < 5) {
+                    scanned++
+                    val number = if (numberIdx >= 0) cursor.getString(numberIdx) ?: "" else ""
+                    val name = if (nameIdx >= 0) cursor.getString(nameIdx) ?: "" else ""
+                    val typeInt = if (typeIdx >= 0) cursor.getInt(typeIdx) else CallLog.Calls.MISSED_TYPE
+                    val duration = if (durationIdx >= 0) cursor.getInt(durationIdx) else 0
+                    val date = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
+
+                    // CallLog.Calls.DATE is the call START time on Android.
+                    // Call end time is date + duration in milliseconds.
+                    val callEndTime = date + (duration * 1000L)
+                    val isRecent = Math.abs(now - callEndTime) < 300_000L || Math.abs(now - date) < 300_000L
+
+                    val isValidNumber = number.isNotBlank() &&
+                            !number.equals("Unknown", ignoreCase = true) &&
+                            number != "-1" && number != "-2" && number != "-3" &&
+                            !number.equals("private", ignoreCase = true)
+
+                    if (isRecent && isValidNumber) {
+                        val callType = when (typeInt) {
+                            CallLog.Calls.INCOMING_TYPE -> CallType.INCOMING
+                            CallLog.Calls.OUTGOING_TYPE -> CallType.OUTGOING
+                            CallLog.Calls.MISSED_TYPE -> CallType.MISSED
+                            CallLog.Calls.REJECTED_TYPE -> CallType.REJECTED
+                            else -> CallType.MISSED
+                        }
+
+                        return CallLogEntry(
+                            number = number,
+                            contactName = name,
+                            callType = callType,
+                            duration = duration,
+                            date = date,
+                            simSlot = 1
+                        )
+                    }
                 }
-            } else {
-                null
             }
+            null
         } catch (e: Exception) {
             Log.w(TAG, "Failed to query system CallLog", e)
             null

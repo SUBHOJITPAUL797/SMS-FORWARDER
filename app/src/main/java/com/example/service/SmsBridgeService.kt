@@ -155,6 +155,13 @@ class SmsBridgeService : Service() {
                     app.smsRepository.syncAllPendingMessages()
                     app.callRepository.syncAllPendingCalls()
                     registerCallLogObserver()
+                    launch {
+                        app.preferencesRepository.isCallForwardingEnabledFlow.collect { enabled ->
+                            if (enabled) {
+                                registerCallLogObserver()
+                            }
+                        }
+                    }
                     // Start 5-minute heartbeat to update lastSeenAt on the link doc
                     heartbeatJob?.cancel()
                     heartbeatJob = launch {
@@ -225,8 +232,8 @@ class SmsBridgeService : Service() {
                             val app = applicationContext as? SmsBridgeApp ?: return@launch
                             val isEnabled = app.preferencesRepository.isCallForwardingEnabledFlow.firstOrNull() ?: true
                             if (isEnabled) {
-                                kotlinx.coroutines.delay(1200L) // Brief delay for system CallLog write completion
-                                app.callRepository.syncLatestRecentCalls(limit = 3)
+                                kotlinx.coroutines.delay(1500L) // Wait for system CallLog write completion
+                                app.callRepository.syncLatestRecentCalls(limit = 5)
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Error in CallLogObserver onChange", e)

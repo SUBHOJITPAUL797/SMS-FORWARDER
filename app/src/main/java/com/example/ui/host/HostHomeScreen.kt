@@ -495,6 +495,12 @@ fun HostHomeScreen(
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", number))
                 Toast.makeText(context, "Copied: $number", Toast.LENGTH_SHORT).show()
+            },
+            onDeleteLogs = { ids ->
+                viewModel.deleteMultipleCallIds(ids) {
+                    callHistoryTarget = null
+                    Toast.makeText(context, "Deleted ${ids.size} call log(s)", Toast.LENGTH_SHORT).show()
+                }
             }
         )
     }
@@ -2319,12 +2325,17 @@ private fun CallCardItem(
         CallType.REJECTED -> Quadruple("Declined", Color(0xFFD97706), Color(0xFFFEF3C7), Icons.Default.PhoneDisabled)
     }
 
-    val hasContactName = call.contactName.isNotBlank() && !call.contactName.equals(call.phoneNumber, ignoreCase = true)
-    val displayName = if (hasContactName) call.contactName.trim() else call.phoneNumber.trim()
-    val displayInitial = if (hasContactName) {
-        call.contactName.trim().first().uppercaseChar().toString()
-    } else {
-        "#"
+    val isUnknown = call.phoneNumber.isBlank() || call.phoneNumber.equals("Unknown", ignoreCase = true)
+    val hasContactName = !isUnknown && call.contactName.isNotBlank() && !call.contactName.equals(call.phoneNumber, ignoreCase = true)
+    val displayName = when {
+        hasContactName -> call.contactName.trim()
+        isUnknown -> "Unknown Caller"
+        else -> call.phoneNumber.trim()
+    }
+    val displayInitial = when {
+        hasContactName -> call.contactName.trim().first().uppercaseChar().toString()
+        isUnknown -> "?"
+        else -> "#"
     }
 
     Card(
@@ -2465,13 +2476,21 @@ private fun CallCardItem(
                         }
                     }
 
-                    if (hasContactName && call.phoneNumber.isNotBlank()) {
+                    if (hasContactName && call.phoneNumber.isNotBlank() && !isUnknown) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = call.phoneNumber,
                             fontSize = 12.5.sp,
                             color = Color(0xFF475569),
                             fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    } else if (isUnknown) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "(Number unrecorded)",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8),
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                         )
                     }
 
@@ -2544,38 +2563,40 @@ private fun CallCardItem(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Button(
-                        onClick = onCallBack,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Phone,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Call", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
+                    if (!isUnknown) {
+                        Button(
+                            onClick = onCallBack,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Call", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
 
-                    OutlinedButton(
-                        onClick = onCopyNumber,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            tint = Color(0xFF475569),
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Copy", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                        OutlinedButton(
+                            onClick = onCopyNumber,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = Color(0xFF475569),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Copy", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                        }
                     }
 
                     OutlinedButton(
@@ -2619,23 +2640,34 @@ private fun CallHistoryDialog(
     allCalls: List<CallRecord>,
     onDismiss: () -> Unit,
     onCallBack: (String) -> Unit,
-    onCopyNumber: (String) -> Unit
+    onCopyNumber: (String) -> Unit,
+    onDeleteLogs: (List<String>) -> Unit
 ) {
     val targetNumber = targetCall.phoneNumber.trim()
-    val hasContactName = targetCall.contactName.isNotBlank() && !targetCall.contactName.equals(targetNumber, ignoreCase = true)
-    val displayName = if (hasContactName) targetCall.contactName.trim() else targetNumber
+    val isUnknown = targetNumber.isBlank() || targetNumber.equals("Unknown", ignoreCase = true)
+    val hasContactName = !isUnknown && targetCall.contactName.isNotBlank() && !targetCall.contactName.equals(targetNumber, ignoreCase = true)
+    val displayName = when {
+        hasContactName -> targetCall.contactName.trim()
+        isUnknown -> "Unknown Caller / Unresolved Logs"
+        else -> targetNumber
+    }
 
     // Filter all calls matching this phone number (matching by last 10 digits to normalize area/country code)
     val callerLogs = remember(targetNumber, allCalls) {
-        val cleanTarget = targetNumber.filter { it.isDigit() }.let { if (it.length >= 10) it.takeLast(10) else it }
-        allCalls.filter { call ->
-            val cleanCandidate = call.phoneNumber.filter { it.isDigit() }.let { if (it.length >= 10) it.takeLast(10) else it }
-            if (cleanTarget.isNotEmpty() && cleanCandidate.isNotEmpty()) {
-                cleanTarget == cleanCandidate
-            } else {
-                call.phoneNumber.trim() == targetNumber
-            }
-        }.sortedByDescending { it.timestamp }
+        if (isUnknown) {
+            allCalls.filter { it.phoneNumber.isBlank() || it.phoneNumber.equals("Unknown", ignoreCase = true) }
+                .sortedByDescending { it.timestamp }
+        } else {
+            val cleanTarget = targetNumber.filter { it.isDigit() }.let { if (it.length >= 10) it.takeLast(10) else it }
+            allCalls.filter { call ->
+                val cleanCandidate = call.phoneNumber.filter { it.isDigit() }.let { if (it.length >= 10) it.takeLast(10) else it }
+                if (cleanTarget.isNotEmpty() && cleanCandidate.isNotEmpty()) {
+                    cleanTarget == cleanCandidate
+                } else {
+                    call.phoneNumber.trim() == targetNumber
+                }
+            }.sortedByDescending { it.timestamp }
+        }
     }
 
     val totalCount = callerLogs.size
@@ -2643,10 +2675,10 @@ private fun CallHistoryDialog(
     val incomingCount = callerLogs.count { it.callType == CallType.INCOMING }
     val outgoingCount = callerLogs.count { it.callType == CallType.OUTGOING }
 
-    val displayInitial = if (hasContactName) {
-        targetCall.contactName.trim().first().uppercaseChar().toString()
-    } else {
-        "#"
+    val displayInitial = when {
+        hasContactName -> targetCall.contactName.trim().first().uppercaseChar().toString()
+        isUnknown -> "?"
+        else -> "#"
     }
 
     Dialog(
@@ -2674,8 +2706,8 @@ private fun CallHistoryDialog(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = Color(0xFFE0F2FE),
-                        border = BorderStroke(1.5.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
+                        color = if (isUnknown) Color(0xFFFEE2E2) else Color(0xFFE0F2FE),
+                        border = BorderStroke(1.5.dp, if (isUnknown) Color(0xFFDC2626).copy(alpha = 0.4f) else Color(0xFF0284C7).copy(alpha = 0.4f)),
                         modifier = Modifier.size(48.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -2683,7 +2715,7 @@ private fun CallHistoryDialog(
                                 text = displayInitial,
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0284C7)
+                                color = if (isUnknown) Color(0xFFDC2626) else Color(0xFF0284C7)
                             )
                         }
                     }
@@ -2709,13 +2741,21 @@ private fun CallHistoryDialog(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        if (hasContactName && targetNumber.isNotBlank()) {
+                        if (hasContactName && targetNumber.isNotBlank() && !isUnknown) {
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = targetNumber,
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        } else if (isUnknown) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Number unrecorded (Call Log permission missing on sender)",
+                                fontSize = 11.5.sp,
+                                color = Color(0xFFDC2626),
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                             )
                         }
                     }
@@ -2899,48 +2939,78 @@ private fun CallHistoryDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Bottom actions: Call Back, Copy, Close
+                // Bottom actions: Call Back, Copy, Delete Logs, Close
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                onCallBack(targetNumber)
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Phone,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Call Back", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!isUnknown) {
+                            Button(
+                                onClick = {
+                                    onCallBack(targetNumber)
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Phone,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Call Back", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    onCopyNumber(targetNumber)
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Copy", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
 
-                        OutlinedButton(
+                        // Delete Logs button (available for all, especially Unknown calls)
+                        Button(
                             onClick = {
-                                onCopyNumber(targetNumber)
+                                onDeleteLogs(callerLogs.map { it.callId })
                             },
                             shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             modifier = Modifier.height(36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.ContentCopy,
+                                imageVector = Icons.Default.Delete,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(14.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Copy", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = if (isUnknown) "Delete All ($totalCount)" else "Delete",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
                     }
 

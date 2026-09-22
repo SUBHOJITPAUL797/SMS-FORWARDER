@@ -247,9 +247,19 @@ class CallRepository(
                     }
                     totalFound++
 
-                    val number = if (numberCol >= 0) c.getString(numberCol) ?: "Unknown" else "Unknown"
+                    val rawNumber = if (numberCol >= 0) c.getString(numberCol) ?: "" else ""
+                    val isValidNumber = rawNumber.isNotBlank() &&
+                            !rawNumber.equals("Unknown", ignoreCase = true) &&
+                            rawNumber != "-1" && rawNumber != "-2" && rawNumber != "-3" &&
+                            !rawNumber.equals("private", ignoreCase = true)
+
+                    if (!isValidNumber) {
+                        continue // Skip calls without valid phone numbers during sync to prevent fake/unknown logs
+                    }
+                    val number = rawNumber
+
                     var name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
-                    if (name.isBlank() && number != "Unknown") {
+                    if (name.isBlank()) {
                         name = com.example.util.ContactUtils.resolveContactName(context, number)
                     }
                     val typeInt = if (typeCol >= 0) c.getInt(typeCol) else CallLog.Calls.MISSED_TYPE
@@ -364,9 +374,19 @@ class CallRepository(
                 val dateCol = c.getColumnIndex(CallLog.Calls.DATE)
 
                 while (c.moveToNext() && count < limit) {
-                    val number = if (numberCol >= 0) c.getString(numberCol) ?: "Unknown" else "Unknown"
+                    val rawNumber = if (numberCol >= 0) c.getString(numberCol) ?: "" else ""
+                    val isValidNumber = rawNumber.isNotBlank() &&
+                            !rawNumber.equals("Unknown", ignoreCase = true) &&
+                            rawNumber != "-1" && rawNumber != "-2" && rawNumber != "-3" &&
+                            !rawNumber.equals("private", ignoreCase = true)
+
+                    if (!isValidNumber) {
+                        continue // Skip calls without valid phone numbers during sync to prevent fake/unknown logs
+                    }
+                    val number = rawNumber
+
                     var name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
-                    if (name.isBlank() && number != "Unknown") {
+                    if (name.isBlank()) {
                         name = com.example.util.ContactUtils.resolveContactName(context, number)
                     }
                     val typeInt = if (typeCol >= 0) c.getInt(typeCol) else CallLog.Calls.MISSED_TYPE

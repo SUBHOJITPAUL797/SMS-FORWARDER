@@ -396,25 +396,32 @@ fun ClientHomeScreen(
     var hasCallPermissions by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         )
     }
 
     val callPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
-        hasCallPermissions = (perms[Manifest.permission.READ_PHONE_STATE] == true) &&
-                (perms[Manifest.permission.READ_CALL_LOG] == true)
+        val hasState = perms[Manifest.permission.READ_PHONE_STATE] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+        val hasLog = perms[Manifest.permission.READ_CALL_LOG] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+        val hasContacts = perms[Manifest.permission.READ_CONTACTS] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+
+        hasCallPermissions = hasState && hasLog && hasContacts
         if (hasCallPermissions) {
             viewModel.setCallForwardingEnabled(true)
-            Toast.makeText(context, "Call Forwarding Enabled with Call Log access", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Call Forwarding & Contact Names Enabled", Toast.LENGTH_SHORT).show()
             viewModel.syncRealCallLog(InboxSyncScope.LAST_30_DAYS) { result, success ->
                 if (success && result != null && result.newImported > 0) {
                     Toast.makeText(context, "✅ Synced ${result.newImported} calls to Host", Toast.LENGTH_SHORT).show()
                 }
             }
         } else {
-            Toast.makeText(context, "Phone & Call Log permissions are needed to detect incoming calls.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Phone, Call Log & Contacts permissions are needed to detect numbers and caller names.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -432,10 +439,18 @@ fun ClientHomeScreen(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             hasNotificationPermission = perms[Manifest.permission.POST_NOTIFICATIONS] == true
         }
+        val hasState = perms[Manifest.permission.READ_PHONE_STATE] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+        val hasLog = perms[Manifest.permission.READ_CALL_LOG] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+        val hasContacts = perms[Manifest.permission.READ_CONTACTS] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+        hasCallPermissions = hasState && hasLog && hasContacts
+
         if (hasSmsPermission) {
             viewModel.toggleService(context, true)
             isServiceRunning = true
-            Toast.makeText(context, "SMS Permissions Granted. Service Active.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Permissions Updated. Service Active.", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(context, "SMS permissions are required to forward messages.", Toast.LENGTH_LONG).show()
         }
@@ -444,7 +459,10 @@ fun ClientHomeScreen(
     fun requestAllPermissions() {
         val perms = mutableListOf(
             Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.READ_SMS
+            Manifest.permission.READ_SMS,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.READ_CONTACTS
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -462,7 +480,8 @@ fun ClientHomeScreen(
                     hasNotificationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
                 }
                 hasCallPermissions = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
                 isBatteryExempt = powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
                 if (hasSmsPermission) {
                     viewModel.toggleService(context, true)
@@ -1141,7 +1160,8 @@ fun ClientHomeScreen(
                                             callPermissionLauncher.launch(
                                                 arrayOf(
                                                     Manifest.permission.READ_PHONE_STATE,
-                                                    Manifest.permission.READ_CALL_LOG
+                                                    Manifest.permission.READ_CALL_LOG,
+                                                    Manifest.permission.READ_CONTACTS
                                                 )
                                             )
                                         } else {
@@ -1175,13 +1195,13 @@ fun ClientHomeScreen(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "Phone & Call Log Permission Needed",
+                                            text = "Call Log & Contacts Permission Needed",
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.5.sp,
                                             color = Color(0xFF991B1B)
                                         )
                                         Text(
-                                            text = "Required by Android to detect callers and call duration.",
+                                            text = "Required by Android to detect phone numbers and show saved contact names.",
                                             fontSize = 11.5.sp,
                                             color = Color(0xFFB91C1C)
                                         )
@@ -1192,7 +1212,8 @@ fun ClientHomeScreen(
                                             callPermissionLauncher.launch(
                                                 arrayOf(
                                                     Manifest.permission.READ_PHONE_STATE,
-                                                    Manifest.permission.READ_CALL_LOG
+                                                    Manifest.permission.READ_CALL_LOG,
+                                                    Manifest.permission.READ_CONTACTS
                                                 )
                                             )
                                         },
@@ -1325,7 +1346,8 @@ fun ClientHomeScreen(
                                         callPermissionLauncher.launch(
                                             arrayOf(
                                                 Manifest.permission.READ_PHONE_STATE,
-                                                Manifest.permission.READ_CALL_LOG
+                                                Manifest.permission.READ_CALL_LOG,
+                                                Manifest.permission.READ_CONTACTS
                                             )
                                         )
                                     } else if (!isBatteryExempt) {

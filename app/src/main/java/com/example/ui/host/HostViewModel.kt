@@ -435,6 +435,16 @@ class HostViewModel(
         }
     }
 
+    fun deleteMultipleCallIds(callIds: List<String>, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            if (code.isNotEmpty() && callIds.isNotEmpty()) {
+                callRepository.deleteMultipleCalls(code, callIds)
+            }
+            onComplete()
+        }
+    }
+
     fun onSearchQueryChanged(newQuery: String) {
         _searchQuery.value = newQuery
     }
