@@ -89,8 +89,9 @@ class PairingRepository(
         val result = firestoreSource.pairWithCode(cleanCode, hostUid)
         return if (result.isSuccess) {
             val (clientUid, clientDeviceName) = result.getOrThrow()
+            // Set the role to HOST — the Host identity is its own hostCode, NOT a single linkedUid.
+            // Multi-client links are stored in Firestore (sms_forwarder_links), not DataStore.
             preferencesRepository.setUserRole(UserRole.HOST)
-            preferencesRepository.setLinkedDevice(clientUid, clientDeviceName)
             Result.success(clientDeviceName)
         } else {
             Result.failure(result.exceptionOrNull() ?: Exception("Pairing failed"))

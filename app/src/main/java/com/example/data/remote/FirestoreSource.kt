@@ -3,6 +3,7 @@ package com.example.data.remote
 import android.os.Build
 import android.util.Log
 import com.example.domain.model.CallRecord
+import com.example.domain.model.ConnectedDevice
 import com.example.domain.model.SmsMessage
 import com.example.domain.model.UserRole
 import com.google.firebase.firestore.DocumentChange
@@ -229,6 +230,71 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 trySend(clients)
             }
         awaitClose { listener.remove() }
+    }
+
+    fun observeConnectedDevices(hostCode: String): Flow<List<ConnectedDevice>> = callbackFlow {
+        val listener = firestore.collection(COLLECTION_LINKS)
+            .whereEqualTo("hostUid", hostCode)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error observing connected devices", error)
+                    return@addSnapshotListener
+                }
+                val devices = snapshot?.documents
+                    ?.mapNotNull { doc -> doc.data?.let { ConnectedDevice.fromMap(it) } }
+                    ?: emptyList()
+                trySend(devices)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun observeClientLink(hostCode: String, clientUid: String): Flow<Map<String, Any>?> = callbackFlow {
+        val linkId = "${hostCode}__${clientUid}"
+        val listener = firestore.collection(COLLECTION_LINKS).document(linkId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error observing client link $linkId", error)
+                    return@addSnapshotListener
+                }
+                trySend(snapshot?.data)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * Disconnects a specific client from the host by marking the link as inactive.
+     */
+    suspend fun disconnectClient(hostCode: String, clientUid: String): Result<Unit> {
+        return try {
+            val linkId = "${hostCode}__${clientUid}"
+            firestore.collection(COLLECTION_LINKS).document(linkId)
+                .update(mapOf("active" to false))
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error disconnecting client $clientUid", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Updates the lastSeenAt timestamp for a specific client link.
+     * Called by the client's foreground service every 5 minutes as a heartbeat.
+     */
+    suspend fun updateClientLastSeen(hostCode: String, clientUid: String): Result<Unit> {
+        return try {
+            val linkId = "${hostCode}__${clientUid}"
+            firestore.collection(COLLECTION_LINKS).document(linkId)
+                .update(mapOf(
+                    "lastSeenAt" to System.currentTimeMillis(),
+                    "active" to true
+                ))
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update lastSeenAt for $clientUid", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun removePairingDoc(code: String) {

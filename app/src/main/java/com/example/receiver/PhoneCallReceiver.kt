@@ -133,17 +133,21 @@ class PhoneCallReceiver : BroadcastReceiver() {
                     }
                 }
 
+                if (finalContactName.isBlank() && finalNumber.isNotBlank() && finalNumber != "Unknown") {
+                    finalContactName = com.example.util.ContactUtils.resolveContactName(context, finalNumber)
+                }
+
                 if (finalNumber == "Unknown" && finalNumber.isBlank()) {
                     Log.d(TAG, "No call details found. Skipping spurious idle broadcast.")
                     return@launch
                 }
 
-                val callId = "call_${UUID.randomUUID().toString().replace("-", "").take(16)}"
-
-                Log.i(TAG, "Processed call: $finalNumber ($finalCallType, ${finalDuration}s, $finalContactName)")
-
                 val app = context.applicationContext as? SmsBridgeApp
                 val callRepo = app?.callRepository ?: SmsBridgeApp.instance.callRepository
+                val callId = callRepo.generateCallId(finalNumber, finalTimestamp, finalCallType)
+
+                Log.i(TAG, "Processed call: $finalNumber ($finalCallType, ${finalDuration}s, $finalContactName, id=$callId)")
+
                 callRepo.handleIncomingCall(
                     callId = callId,
                     phoneNumber = finalNumber,

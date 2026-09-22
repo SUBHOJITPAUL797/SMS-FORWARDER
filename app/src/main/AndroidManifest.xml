@@ -4,6 +4,10 @@
 
     <!-- Hardware feature declarations -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Camera for QR Code Scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <!-- SMS Permissions -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
@@ -12,6 +16,7 @@
     <!-- Phone Call Permissions -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <!-- Network -->
     <uses-permission android:name="android.permission.INTERNET" />

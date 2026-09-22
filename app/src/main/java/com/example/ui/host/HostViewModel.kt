@@ -7,6 +7,7 @@ import com.example.data.repository.AuthRepository
 import com.example.data.repository.CallRepository
 import com.example.data.repository.SmsRepository
 import com.example.domain.model.CallRecord
+import com.example.domain.model.ConnectedDevice
 import com.example.domain.model.SmsMessage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,8 @@ class HostViewModel(
 
     fun selectTab(tab: HostTab) {
         _selectedTab.value = tab
+        exitSelectionMode()
+        exitCallSelectionMode()
     }
 
     private val _hostCode = MutableStateFlow("")
@@ -58,13 +61,24 @@ class HostViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val clientDeviceName: StateFlow<String> = connectedClients
-        .map { clients ->
-            if (clients.isNotEmpty()) {
-                val names = clients.mapNotNull { it["clientDeviceName"] as? String }.filter { it.isNotBlank() }.distinct()
-                if (names.isNotEmpty()) names.joinToString(", ") else "Client Connected"
+    /** Typed connected devices — used for the management panel */
+    val connectedDevices: StateFlow<List<ConnectedDevice>> = _hostCode
+        .flatMapLatest { code ->
+            if (code.isNotEmpty()) {
+                smsRepository.observeConnectedDevices(code)
             } else {
-                "Waiting for Client..."
+                flowOf(emptyList())
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val clientDeviceName: StateFlow<String> = connectedDevices
+        .map { devices ->
+            val active = devices.filter { it.active }
+            when {
+                active.isEmpty() -> "Waiting for Client..."
+                active.size == 1 -> active.first().clientDeviceName
+                else -> "${active.size} Clients Connected"
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "Waiting for Client...")
@@ -84,15 +98,19 @@ class HostViewModel(
             }
         }
         .map { list ->
-            // Smart Deduplication: deduplicate by messageId or by (sender + body + 15s window)
-            val seenKeys = mutableSetOf<String>()
+            // Smart Deduplication: deduplicate by messageId or by (sender + body + 5s window)
+            val seenIds = mutableSetOf<String>()
+            val seenContents = mutableSetOf<String>()
             val deduplicated = mutableListOf<SmsMessage>()
             for (msg in list) {
-                val timeBucket = msg.receivedAt / 4_000L
-                val contentKey = "${msg.sender.trim()}|${msg.body.trim()}|$timeBucket"
+                val timeBucket = msg.receivedAt / 5_000L
+                val cleanSender = msg.sender.filter { it.isDigit() }.takeLast(8).ifEmpty { msg.sender.trim() }
+                val contentKey = "$cleanSender|${msg.body.trim()}|$timeBucket"
                 val idKey = msg.messageId
 
-                if (seenKeys.add(idKey) && seenKeys.add(contentKey)) {
+                if (!seenIds.contains(idKey) && !seenContents.contains(contentKey)) {
+                    seenIds.add(idKey)
+                    seenContents.add(contentKey)
                     deduplicated.add(msg)
                 }
             }
@@ -109,14 +127,19 @@ class HostViewModel(
             }
         }
         .map { list ->
-            val seenKeys = mutableSetOf<String>()
+            // Smart Deduplication: deduplicate by callId or by (phone + type + 5s window)
+            val seenIds = mutableSetOf<String>()
+            val seenContents = mutableSetOf<String>()
             val deduplicated = mutableListOf<CallRecord>()
             for (call in list) {
-                val timeBucket = call.timestamp / 4_000L
-                val contentKey = "${call.phoneNumber.trim()}|${call.callType.name}|$timeBucket"
+                val timeBucket = call.timestamp / 5_000L
+                val cleanNum = call.phoneNumber.filter { it.isDigit() }.takeLast(8).ifEmpty { call.phoneNumber.trim() }
+                val contentKey = "$cleanNum|${call.callType.name}|$timeBucket"
                 val idKey = call.callId
 
-                if (seenKeys.add(idKey) && seenKeys.add(contentKey)) {
+                if (!seenIds.contains(idKey) && !seenContents.contains(contentKey)) {
+                    seenIds.add(idKey)
+                    seenContents.add(contentKey)
                     deduplicated.add(call)
                 }
             }
@@ -128,34 +151,51 @@ class HostViewModel(
         clients.isNotEmpty() || messages.isNotEmpty() || calls.isNotEmpty()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val filteredMessages: StateFlow<List<SmsMessage>> = combine(rawMessages, _searchQuery) { messages, query ->
-        if (query.isBlank()) {
-            messages
-        } else {
-            messages.filter {
+    private val _selectedDeviceFilter = MutableStateFlow<String?>(null) // null means All Devices
+    val selectedDeviceFilter: StateFlow<String?> = _selectedDeviceFilter.asStateFlow()
+
+    fun setSelectedDeviceFilter(clientUid: String?) {
+        _selectedDeviceFilter.value = clientUid
+    }
+
+    val filteredMessages: StateFlow<List<SmsMessage>> = combine(rawMessages, _searchQuery, _selectedDeviceFilter) { messages, query, deviceFilter ->
+        var list = messages
+        if (!deviceFilter.isNullOrEmpty()) {
+            list = list.filter {
+                it.clientUid == deviceFilter || it.clientDeviceName.equals(deviceFilter, ignoreCase = true)
+            }
+        }
+        if (query.isNotBlank()) {
+            list = list.filter {
                 it.sender.contains(query, ignoreCase = true) ||
                         it.body.contains(query, ignoreCase = true)
             }
         }
+        list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val filteredCalls: StateFlow<List<CallRecord>> = combine(rawCalls, _searchQuery) { calls, query ->
-        if (query.isBlank()) {
-            calls
-        } else {
-            calls.filter {
+    val filteredCalls: StateFlow<List<CallRecord>> = combine(rawCalls, _searchQuery, _selectedDeviceFilter) { calls, query, deviceFilter ->
+        var list = calls
+        if (!deviceFilter.isNullOrEmpty()) {
+            list = list.filter {
+                it.clientUid == deviceFilter || it.clientDeviceName.equals(deviceFilter, ignoreCase = true)
+            }
+        }
+        if (query.isNotBlank()) {
+            list = list.filter {
                 it.phoneNumber.contains(query, ignoreCase = true) ||
                         it.contactName.contains(query, ignoreCase = true) ||
                         it.callType.name.contains(query, ignoreCase = true)
             }
         }
+        list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val unreadCount: StateFlow<Int> = rawMessages.combine(_searchQuery) { messages, _ ->
+    val unreadCount: StateFlow<Int> = filteredMessages.map { messages ->
         messages.count { !it.read }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val unreadCallsCount: StateFlow<Int> = rawCalls.map { calls ->
+    val unreadCallsCount: StateFlow<Int> = filteredCalls.map { calls ->
         calls.count { !it.read }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -334,6 +374,67 @@ class HostViewModel(
         }
     }
 
+    // Multi-Select and Deletion State - Calls
+    private val _selectedCallIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedCallIds: StateFlow<Set<String>> = _selectedCallIds.asStateFlow()
+
+    private val _isCallSelectionMode = MutableStateFlow(false)
+    val isCallSelectionMode: StateFlow<Boolean> = _isCallSelectionMode.asStateFlow()
+
+    fun enterCallSelectionMode(initialCallId: String? = null) {
+        _isCallSelectionMode.value = true
+        if (initialCallId != null) {
+            _selectedCallIds.value = setOf(initialCallId)
+        }
+    }
+
+    fun exitCallSelectionMode() {
+        _isCallSelectionMode.value = false
+        _selectedCallIds.value = emptySet()
+    }
+
+    fun toggleCallSelection(callId: String) {
+        val current = _selectedCallIds.value.toMutableSet()
+        if (current.contains(callId)) {
+            current.remove(callId)
+        } else {
+            current.add(callId)
+        }
+        _selectedCallIds.value = current
+        if (current.isEmpty()) {
+            _isCallSelectionMode.value = false
+        } else {
+            _isCallSelectionMode.value = true
+        }
+    }
+
+    fun selectAllCalls(visibleIds: List<String>) {
+        _selectedCallIds.value = visibleIds.toSet()
+        _isCallSelectionMode.value = true
+    }
+
+    fun deleteSingleCall(callId: String, onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            if (code.isNotEmpty()) {
+                callRepository.deleteCall(code, callId)
+            }
+            onComplete()
+        }
+    }
+
+    fun deleteSelectedCalls(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            val ids = _selectedCallIds.value.toList()
+            if (code.isNotEmpty() && ids.isNotEmpty()) {
+                callRepository.deleteMultipleCalls(code, ids)
+            }
+            exitCallSelectionMode()
+            onComplete()
+        }
+    }
+
     fun onSearchQueryChanged(newQuery: String) {
         _searchQuery.value = newQuery
     }
@@ -356,15 +457,6 @@ class HostViewModel(
         }
     }
 
-    fun deleteSingleCall(callId: String, onComplete: () -> Unit = {}) {
-        viewModelScope.launch {
-            val code = _hostCode.value
-            if (code.isNotEmpty()) {
-                callRepository.deleteCall(code, callId)
-            }
-            onComplete()
-        }
-    }
 
     fun markCallAsRead(callId: String) {
         viewModelScope.launch {
@@ -417,6 +509,19 @@ class HostViewModel(
                 authRepository.logout()
             } catch (e: Exception) {
                 // Ignore
+            }
+        }
+    }
+
+    /**
+     * Disconnects a specific client device from this Host.
+     * The link is marked inactive in Firestore — the client stops forwarding on next sync.
+     */
+    fun disconnectClient(clientUid: String) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            if (code.isNotEmpty()) {
+                smsRepository.disconnectClient(code, clientUid)
             }
         }
     }

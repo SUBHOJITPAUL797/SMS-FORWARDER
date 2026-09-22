@@ -251,18 +251,36 @@ object HostNotificationManager {
 
         val notifId = (cleanCallId.hashCode() and 0x3FFFFFFF)
         val timeString = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(callRecord.timestamp))
+        val hasContactName = callRecord.contactName.isNotBlank() && !callRecord.contactName.equals(phoneNumber, ignoreCase = true)
 
-        val title = when (callType) {
-            CallType.MISSED -> "📵 Missed Call from $callerName"
-            CallType.INCOMING -> "📞 Received Call from $callerName"
-            CallType.OUTGOING -> "📲 Outgoing Call to $callerName"
-            CallType.REJECTED -> "🚫 Rejected Call from $callerName"
+        val typeEmoji = when (callType) {
+            CallType.MISSED -> "📵 Missed Call"
+            CallType.INCOMING -> "📞 Received Call"
+            CallType.OUTGOING -> "📲 Outgoing Call"
+            CallType.REJECTED -> "🚫 Declined Call"
         }
 
-        val body = if (callType == CallType.MISSED) {
-            "Missed call from $phoneNumber · $timeString"
+        val title = if (hasContactName) {
+            "$typeEmoji: ${callRecord.contactName}"
         } else {
-            "Duration: $durationStr · $timeString"
+            "$typeEmoji: $phoneNumber"
+        }
+
+        val contentText = if (hasContactName) {
+            "$phoneNumber · $durationStr · $timeString"
+        } else {
+            "$durationStr · $timeString"
+        }
+
+        val bigText = buildString {
+            if (hasContactName) {
+                append("👤 Contact: ${callRecord.contactName}\n")
+            }
+            append("📞 Phone: $phoneNumber\n")
+            append("⏱ Duration: $durationStr\n")
+            append("🕒 Time: $timeString\n")
+            val dev = callRecord.clientDeviceName.ifBlank { "Client Phone" }
+            append("📱 Device: $dev (SIM ${callRecord.simSlot})")
         }
 
         // Tap opens Host screen in MainActivity
@@ -310,11 +328,14 @@ object HostNotificationManager {
         val builder = NotificationCompat.Builder(context, "call_forward_alerts")
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
-            .setContentText(body)
+            .setContentText(contentText)
             .setStyle(
                 NotificationCompat.BigTextStyle()
-                    .bigText("$body\nFrom: $callerName ($phoneNumber)\nForwarded by ${callRecord.clientDeviceName.ifBlank { "Client Device" }}")
+                    .setBigContentTitle(title)
+                    .setSummaryText(if (callRecord.clientDeviceName.isNotBlank()) callRecord.clientDeviceName else "Forwarded Call")
+                    .bigText(bigText)
             )
+            .setColor(0xFF0284C7.toInt())
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setAutoCancel(true)

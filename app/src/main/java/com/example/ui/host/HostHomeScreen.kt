@@ -22,6 +22,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -91,6 +93,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.domain.model.ConnectedDevice
 import com.example.domain.model.SmsMessage
 import com.example.ui.theme.FabAccentBg
 import com.example.ui.theme.FabAccentContent
@@ -136,6 +139,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Person
 import com.example.util.AutoStartPermissionHelper
 import com.example.util.FloatingOtpManager
 
@@ -161,6 +168,10 @@ fun HostHomeScreen(
     val isFloatingOtpEnabled by viewModel.isFloatingOtpEnabled.collectAsStateWithLifecycle()
     val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
     val selectedMessageIds by viewModel.selectedMessageIds.collectAsStateWithLifecycle()
+    val isCallSelectionMode by viewModel.isCallSelectionMode.collectAsStateWithLifecycle()
+    val selectedCallIds by viewModel.selectedCallIds.collectAsStateWithLifecycle()
+    val connectedDevices by viewModel.connectedDevices.collectAsStateWithLifecycle()
+    val selectedDeviceFilter by viewModel.selectedDeviceFilter.collectAsStateWithLifecycle()
 
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val rawCalls by viewModel.rawCalls.collectAsStateWithLifecycle()
@@ -174,15 +185,23 @@ fun HostHomeScreen(
     val pullToRefreshState = rememberPullToRefreshState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val activity = context as? androidx.activity.ComponentActivity
 
     var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var isBatteryOptimized by remember { mutableStateOf(AutoStartPermissionHelper.isBatteryOptimized(context)) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
+    var showBatchDeleteCallsDialog by remember { mutableStateOf(false) }
     var messageToDeleteSingle by remember { mutableStateOf<String?>(null) }
     var callToDeleteSingle by remember { mutableStateOf<String?>(null) }
+    var callHistoryTarget by remember { mutableStateOf<CallRecord?>(null) }
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
     var hasOverlayPermission by remember { mutableStateOf(FloatingOtpManager.canDrawOverlays(context)) }
+
+    BackHandler(enabled = isSelectionMode || isCallSelectionMode) {
+        if (isCallSelectionMode) viewModel.exitCallSelectionMode()
+        if (isSelectionMode) viewModel.exitSelectionMode()
+    }
 
     var hasNotificationPermission by remember {
         mutableStateOf(
@@ -205,6 +224,12 @@ fun HostHomeScreen(
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
             notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
+        activity?.intent?.let { intent ->
+            if (intent.getStringExtra("selected_tab") == "calls") {
+                viewModel.selectTab(HostTab.CALLS)
+                intent.removeExtra("selected_tab")
+            }
+        }
     }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -221,6 +246,12 @@ fun HostHomeScreen(
                         context,
                         android.Manifest.permission.POST_NOTIFICATIONS
                     ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                }
+                activity?.intent?.let { intent ->
+                    if (intent.getStringExtra("selected_tab") == "calls") {
+                        viewModel.selectTab(HostTab.CALLS)
+                        intent.removeExtra("selected_tab")
+                    }
                 }
             }
         }
@@ -329,7 +360,7 @@ fun HostHomeScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        callToDeleteSingle?.let { callId ->
+                        callToDeleteSingle?.let { callId: String ->
                             viewModel.deleteSingleCall(callId) {
                                 Toast.makeText(context, "Call record deleted", Toast.LENGTH_SHORT).show()
                             }
@@ -345,6 +376,62 @@ fun HostHomeScreen(
                 TextButton(onClick = { callToDeleteSingle = null }) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    // Confirmation dialog for batch delete calls
+    if (showBatchDeleteCallsDialog) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteCallsDialog = false },
+            title = { Text("Delete Selected Calls?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to delete ${selectedCallIds.size} selected call record(s)? This will permanently remove them from both this device and the cloud database.",
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteSelectedCalls {
+                            Toast.makeText(context, "Deleted selected call records", Toast.LENGTH_SHORT).show()
+                        }
+                        showBatchDeleteCallsDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete Permanently", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteCallsDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Call History Dialog
+    if (callHistoryTarget != null) {
+        CallHistoryDialog(
+            targetCall = callHistoryTarget!!,
+            allCalls = rawCalls,
+            onDismiss = { callHistoryTarget = null },
+            onCallBack = { number ->
+                try {
+                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${number.trim()}")).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(dialIntent)
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Cannot open dialer: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onCopyNumber = { number ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", number))
+                Toast.makeText(context, "Copied: $number", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -382,19 +469,28 @@ fun HostHomeScreen(
     Scaffold(
         topBar = {
             Column {
-                if (isSelectionMode) {
+                val inSelection = if (selectedTab == HostTab.CALLS) isCallSelectionMode else isSelectionMode
+                val selectedCount = if (selectedTab == HostTab.CALLS) selectedCallIds.size else selectedMessageIds.size
+
+                if (inSelection) {
                     // Contextual Multi-Select Top App Bar
                     TopAppBar(
                         title = {
                             Text(
-                                text = "${selectedMessageIds.size} Selected",
+                                text = "$selectedCount Selected",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                         },
                         navigationIcon = {
-                            IconButton(onClick = { viewModel.exitSelectionMode() }) {
+                            IconButton(onClick = {
+                                if (selectedTab == HostTab.CALLS) {
+                                    viewModel.exitCallSelectionMode()
+                                } else {
+                                    viewModel.exitSelectionMode()
+                                }
+                            }) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Exit Selection",
@@ -405,19 +501,29 @@ fun HostHomeScreen(
                         actions = {
                             IconButton(
                                 onClick = {
-                                    viewModel.selectAll(pagedMessages.map { it.messageId })
+                                    if (selectedTab == HostTab.CALLS) {
+                                        viewModel.selectAllCalls(pagedCalls.map { it.callId })
+                                    } else {
+                                        viewModel.selectAll(pagedMessages.map { it.messageId })
+                                    }
                                 }
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.SelectAll,
                                     contentDescription = "Select All",
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = if (selectedTab == HostTab.CALLS) Color(0xFF0284C7) else MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(
                                 onClick = {
-                                    if (selectedMessageIds.isNotEmpty()) {
-                                        showBatchDeleteDialog = true
+                                    if (selectedTab == HostTab.CALLS) {
+                                        if (selectedCallIds.isNotEmpty()) {
+                                            showBatchDeleteCallsDialog = true
+                                        }
+                                    } else {
+                                        if (selectedMessageIds.isNotEmpty()) {
+                                            showBatchDeleteDialog = true
+                                        }
                                     }
                                 }
                             ) {
@@ -758,6 +864,73 @@ fun HostHomeScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (isLiveConnected) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+
+                        // Connected Devices Panel — expandable per-device list
+                        if (connectedDevices.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "CONNECTED DEVICES",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 0.8.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            connectedDevices.filter { it.active }.forEach { device ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PhoneAndroid,
+                                            contentDescription = null,
+                                            tint = Color(0xFF6750A4),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Column {
+                                            Text(
+                                                text = device.clientDeviceName,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "Last seen: ${device.lastSeenLabel()}",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFFEE2E2),
+                                        modifier = Modifier.clickable {
+                                            viewModel.disconnectClient(device.clientUid)
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "Disconnect",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFDC2626),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1153,6 +1326,86 @@ fun HostHomeScreen(
                     )
                 )
 
+                // Device Filter Chips Row (shown when devices are connected)
+                if (connectedDevices.isNotEmpty()) {
+                    val activeDevices = connectedDevices.filter { it.active }
+                    if (activeDevices.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // "All Devices" Chip
+                            val isAllSelected = selectedDeviceFilter == null
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (isAllSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = if (isAllSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                                modifier = Modifier.clickable { viewModel.setSelectedDeviceFilter(null) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DoneAll,
+                                        contentDescription = null,
+                                        tint = if (isAllSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "All Devices",
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isAllSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Individual Device Chips
+                            activeDevices.forEach { device ->
+                                val isSelected = selectedDeviceFilter == device.clientUid || selectedDeviceFilter == device.clientDeviceName
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                                    modifier = Modifier.clickable {
+                                        if (isSelected) {
+                                            viewModel.setSelectedDeviceFilter(null)
+                                        } else {
+                                            viewModel.setSelectedDeviceFilter(device.clientUid)
+                                        }
+                                    }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PhoneAndroid,
+                                            contentDescription = null,
+                                            tint = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = device.clientDeviceName,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+
                 if (selectedTab == HostTab.MESSAGES) {
                     // Message List or Empty State
                     if (pagedMessages.isEmpty()) {
@@ -1388,8 +1641,14 @@ fun HostHomeScreen(
                             }
 
                             items(pagedCalls, key = { it.callId }) { call ->
+                                val isSelected = selectedCallIds.contains(call.callId)
                                 CallCardItem(
                                     call = call,
+                                    isSelectionMode = isCallSelectionMode,
+                                    isSelected = isSelected,
+                                    onToggleSelect = { viewModel.toggleCallSelection(call.callId) },
+                                    onLongClick = { viewModel.enterCallSelectionMode(call.callId) },
+                                    onOpenHistory = { callHistoryTarget = call },
                                     onMarkAsRead = { viewModel.markCallAsRead(call.callId) },
                                     onDelete = { callToDeleteSingle = call.callId },
                                     onCallBack = {
@@ -1735,9 +1994,15 @@ private fun CallMetricPill(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CallCardItem(
     call: CallRecord,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    onLongClick: () -> Unit = {},
+    onOpenHistory: () -> Unit,
     onMarkAsRead: () -> Unit,
     onDelete: () -> Unit,
     onCallBack: () -> Unit,
@@ -1766,8 +2031,9 @@ private fun CallCardItem(
         CallType.REJECTED -> Quadruple("Declined", Color(0xFFD97706), Color(0xFFFEF3C7), Icons.Default.PhoneDisabled)
     }
 
-    val displayName = call.contactName.trim().ifEmpty { call.phoneNumber.trim() }
-    val displayInitial = if (call.contactName.isNotBlank()) {
+    val hasContactName = call.contactName.isNotBlank() && !call.contactName.equals(call.phoneNumber, ignoreCase = true)
+    val displayName = if (hasContactName) call.contactName.trim() else call.phoneNumber.trim()
+    val displayInitial = if (hasContactName) {
         call.contactName.trim().first().uppercaseChar().toString()
     } else {
         "#"
@@ -1776,18 +2042,35 @@ private fun CallCardItem(
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isUnread) Color(0xFFEFF6FF) else Color.White
+            containerColor = when {
+                isSelected -> Color(0xFFD0BCFF).copy(alpha = 0.5f)
+                isUnread -> Color(0xFFEFF6FF)
+                else -> Color.White
+            }
         ),
         border = BorderStroke(
-            width = if (isUnread) 1.5.dp else 1.dp,
-            color = if (isUnread) Color(0xFF93C5FD) else Color(0xFFE2E8F0)
+            width = if (isSelected) 2.dp else if (isUnread) 1.5.dp else 1.dp,
+            color = when {
+                isSelected -> MaterialTheme.colorScheme.primary
+                isUnread -> Color(0xFF93C5FD)
+                else -> Color(0xFFE2E8F0)
+            }
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isUnread) 2.dp else 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isUnread || isSelected) 2.dp else 0.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable {
-                if (isUnread) onMarkAsRead()
-            }
+            .clip(RoundedCornerShape(20.dp))
+            .combinedClickable(
+                onClick = {
+                    if (isSelectionMode) {
+                        onToggleSelect()
+                    } else {
+                        if (isUnread) onMarkAsRead()
+                        onOpenHistory()
+                    }
+                },
+                onLongClick = onLongClick
+            )
     ) {
         Column(
             modifier = Modifier
@@ -1798,6 +2081,15 @@ private fun CallCardItem(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { onToggleSelect() },
+                        colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                }
+
                 // Caller Initial Avatar with Type Badge
                 Box(modifier = Modifier.size(46.dp)) {
                     Surface(
@@ -1845,15 +2137,27 @@ private fun CallCardItem(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = displayName,
-                            fontSize = 15.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f, fill = false)
-                        )
+                        ) {
+                            if (hasContactName) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(16.dp).padding(end = 4.dp)
+                                )
+                            }
+                            Text(
+                                text = displayName,
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -1873,7 +2177,7 @@ private fun CallCardItem(
                         }
                     }
 
-                    if (call.contactName.isNotBlank() && call.phoneNumber.isNotBlank()) {
+                    if (hasContactName && call.phoneNumber.isNotBlank()) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = call.phoneNumber,
@@ -1945,45 +2249,63 @@ private fun CallCardItem(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Action Row: 1-Tap Call Back, Copy Number, Delete
+            // Action Row: 1-Tap Call Back, Copy Number, History, Delete
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Button(
                         onClick = onCallBack,
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                         modifier = Modifier.height(32.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Phone,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(13.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Call Back", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Call", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
 
                     OutlinedButton(
                         onClick = onCopyNumber,
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         modifier = Modifier.height(32.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
                             contentDescription = null,
                             tint = Color(0xFF475569),
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(12.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Copy", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
+                    }
+
+                    OutlinedButton(
+                        onClick = onOpenHistory,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Color(0xFF93C5FD)),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFEFF6FF)),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = Color(0xFF1D4ED8),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("History", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
                     }
                 }
 
@@ -1997,6 +2319,341 @@ private fun CallCardItem(
                         tint = Color(0xFFDC2626).copy(alpha = 0.8f),
                         modifier = Modifier.size(18.dp)
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallHistoryDialog(
+    targetCall: CallRecord,
+    allCalls: List<CallRecord>,
+    onDismiss: () -> Unit,
+    onCallBack: (String) -> Unit,
+    onCopyNumber: (String) -> Unit
+) {
+    val targetNumber = targetCall.phoneNumber.trim()
+    val hasContactName = targetCall.contactName.isNotBlank() && !targetCall.contactName.equals(targetNumber, ignoreCase = true)
+    val displayName = if (hasContactName) targetCall.contactName.trim() else targetNumber
+
+    // Filter all calls matching this phone number (matching by last 10 digits to normalize area/country code)
+    val callerLogs = remember(targetNumber, allCalls) {
+        val cleanTarget = targetNumber.filter { it.isDigit() }.let { if (it.length >= 10) it.takeLast(10) else it }
+        allCalls.filter { call ->
+            val cleanCandidate = call.phoneNumber.filter { it.isDigit() }.let { if (it.length >= 10) it.takeLast(10) else it }
+            if (cleanTarget.isNotEmpty() && cleanCandidate.isNotEmpty()) {
+                cleanTarget == cleanCandidate
+            } else {
+                call.phoneNumber.trim() == targetNumber
+            }
+        }.sortedByDescending { it.timestamp }
+    }
+
+    val totalCount = callerLogs.size
+    val missedCount = callerLogs.count { it.callType == CallType.MISSED || it.callType == CallType.REJECTED }
+    val incomingCount = callerLogs.count { it.callType == CallType.INCOMING }
+    val outgoingCount = callerLogs.count { it.callType == CallType.OUTGOING }
+
+    val displayInitial = if (hasContactName) {
+        targetCall.contactName.trim().first().uppercaseChar().toString()
+    } else {
+        "#"
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                // Header: Avatar, Name, Number, Close button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFE0F2FE),
+                        border = BorderStroke(1.5.dp, Color(0xFF0284C7).copy(alpha = 0.4f)),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = displayInitial,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0284C7)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (hasContactName) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(16.dp).padding(end = 4.dp)
+                                )
+                            }
+                            Text(
+                                text = displayName,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (hasContactName && targetNumber.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = targetNumber,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Stats row: Total, Missed, Received, Outgoing
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CallMetricPill(
+                        label = "Total",
+                        count = totalCount,
+                        color = Color(0xFF0284C7),
+                        bgColor = Color(0xFFE0F2FE)
+                    )
+                    CallMetricPill(
+                        label = "Missed",
+                        count = missedCount,
+                        color = Color(0xFFDC2626),
+                        bgColor = Color(0xFFFEE2E2)
+                    )
+                    CallMetricPill(
+                        label = "Received",
+                        count = incomingCount,
+                        color = Color(0xFF16A34A),
+                        bgColor = Color(0xFFDCFCE7)
+                    )
+                    if (outgoingCount > 0) {
+                        CallMetricPill(
+                            label = "Outgoing",
+                            count = outgoingCount,
+                            color = Color(0xFF7C3AED),
+                            bgColor = Color(0xFFEDE9FE)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "Call History Logs ($totalCount)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Call items list
+                if (callerLogs.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No call logs recorded for this number.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(callerLogs, key = { it.callId }) { entry ->
+                            val (typeLabel, typeColor, typeBg, typeIcon) = when (entry.callType) {
+                                CallType.MISSED -> Quadruple("Missed Call", Color(0xFFDC2626), Color(0xFFFEE2E2), Icons.Default.CallMissed)
+                                CallType.INCOMING -> Quadruple("Incoming", Color(0xFF16A34A), Color(0xFFDCFCE7), Icons.Default.CallReceived)
+                                CallType.OUTGOING -> Quadruple("Outgoing", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.CallMade)
+                                CallType.REJECTED -> Quadruple("Declined", Color(0xFFD97706), Color(0xFFFEF3C7), Icons.Default.PhoneDisabled)
+                            }
+                            val dateStr = SimpleDateFormat("MMM d, yyyy · hh:mm a", Locale.getDefault()).format(Date(entry.timestamp))
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = typeBg,
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = typeIcon,
+                                                contentDescription = null,
+                                                tint = typeColor,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = typeLabel,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = typeColor
+                                            )
+                                            Text(
+                                                text = entry.formattedDuration(),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = dateStr,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                            )
+                                            Text(
+                                                text = "SIM ${entry.simSlot}",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                        if (entry.clientDeviceName.isNotBlank()) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "📱 ${entry.clientDeviceName}",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Bottom actions: Call Back, Copy, Close
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                onCallBack(targetNumber)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Call Back", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                onCopyNumber(targetNumber)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Copy", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    TextButton(onClick = onDismiss) {
+                        Text("Close", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

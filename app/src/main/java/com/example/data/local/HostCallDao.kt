@@ -23,6 +23,12 @@ interface HostCallDao {
     @Query("DELETE FROM host_calls WHERE callId IN (:ids)")
     suspend fun deleteMultiple(ids: List<String>)
 
+    @Query("SELECT * FROM host_calls WHERE callId = :id LIMIT 1")
+    suspend fun getById(id: String): HostCallEntity?
+
+    @Query("SELECT callId FROM host_calls WHERE hostCode = :hostCode AND phoneNumber = :phoneNumber AND timestamp BETWEEN :minTs AND :maxTs")
+    suspend fun findMatchingCallIds(hostCode: String, phoneNumber: String, minTs: Long, maxTs: Long): List<String>
+
     @Query("UPDATE host_calls SET `read` = 1 WHERE callId = :id")
     suspend fun markAsRead(id: String)
 

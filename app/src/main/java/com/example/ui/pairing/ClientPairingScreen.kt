@@ -1,5 +1,6 @@
 package com.example.ui.pairing
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -41,10 +42,12 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.model.PairingState
+import com.example.util.QrCodeUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -197,7 +201,39 @@ fun ClientPairingScreen(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(24.dp))
+                                Spacer(modifier = Modifier.height(20.dp))
+
+                                // QR Code for scanning by Host phone
+                                val qrBitmap = remember(current.code) {
+                                    QrCodeUtils.generateQrBitmap(
+                                        content = QrCodeUtils.encodeCode(current.code),
+                                        size = 600
+                                    ).asImageBitmap()
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color.White,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCAC4D0)),
+                                    modifier = Modifier.size(200.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(12.dp)) {
+                                        Image(
+                                            bitmap = qrBitmap,
+                                            contentDescription = "QR Code for pairing",
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Scan with Host phone to pair instantly",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF49454F),
+                                    textAlign = TextAlign.Center
+                                )
+
+                                Spacer(modifier = Modifier.height(16.dp))
 
                                 // Countdown timer
                                 val minutes = current.remainingSeconds / 60

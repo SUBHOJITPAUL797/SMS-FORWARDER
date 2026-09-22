@@ -123,6 +123,13 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun clearLinkedDevice() {
+        dataStore.edit { preferences ->
+            preferences.remove(KEY_LINKED_UID)
+            preferences.remove(KEY_LINKED_DEVICE_NAME)
+        }
+    }
+
     suspend fun setFcmToken(token: String) {
         dataStore.edit { preferences ->
             preferences[KEY_FCM_TOKEN] = token

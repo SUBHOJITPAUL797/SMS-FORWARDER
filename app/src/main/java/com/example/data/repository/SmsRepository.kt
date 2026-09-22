@@ -16,6 +16,7 @@ import com.example.data.local.QueueStatus
 import com.example.data.local.SmsQueueEntity
 import com.example.data.remote.AuthSource
 import com.example.data.remote.FirestoreSource
+import com.example.domain.model.ConnectedDevice
 import com.example.domain.model.SmsMessage
 import com.example.worker.SmsUploadWorker
 import com.example.data.local.HostMessageEntity
@@ -366,6 +367,22 @@ class SmsRepository(
 
     fun observeConnectedClients(hostCode: String): Flow<List<Map<String, Any>>> {
         return firestoreSource.observeConnectedClients(hostCode)
+    }
+
+    fun observeConnectedDevices(hostCode: String): Flow<List<ConnectedDevice>> {
+        return firestoreSource.observeConnectedDevices(hostCode)
+    }
+
+    suspend fun disconnectClient(hostCode: String, clientUid: String): Result<Unit> {
+        return firestoreSource.disconnectClient(hostCode, clientUid)
+    }
+
+    suspend fun updateClientLastSeen(hostCode: String, clientUid: String): Result<Unit> {
+        return firestoreSource.updateClientLastSeen(hostCode, clientUid)
+    }
+
+    fun observeClientLink(hostCode: String, clientUid: String): Flow<Map<String, Any>?> {
+        return firestoreSource.observeClientLink(hostCode, clientUid)
     }
 
     suspend fun registerClientLink(hostCode: String): Result<Unit> {

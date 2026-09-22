@@ -183,10 +183,11 @@ class CallRepository(
         }
     }
 
-    private fun generateCallId(phoneNumber: String, timestamp: Long, type: CallType): String {
+    fun generateCallId(phoneNumber: String, timestamp: Long, type: CallType): String {
         val cleanNum = phoneNumber.filter { it.isDigit() }.takeLast(8)
-        val hash = Math.abs("${cleanNum}_${type.name}_$timestamp".hashCode())
-        return "call_${timestamp}_$hash"
+        val timeBucket = timestamp / 5_000L
+        val hash = Math.abs("${cleanNum}_${type.name}_$timeBucket".hashCode())
+        return "call_${timeBucket}_$hash"
     }
 
     /**
@@ -247,7 +248,10 @@ class CallRepository(
                     totalFound++
 
                     val number = if (numberCol >= 0) c.getString(numberCol) ?: "Unknown" else "Unknown"
-                    val name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
+                    var name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
+                    if (name.isBlank() && number != "Unknown") {
+                        name = com.example.util.ContactUtils.resolveContactName(context, number)
+                    }
                     val typeInt = if (typeCol >= 0) c.getInt(typeCol) else CallLog.Calls.MISSED_TYPE
                     val duration = if (durationCol >= 0) c.getInt(durationCol) else 0
                     val date = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
@@ -361,7 +365,10 @@ class CallRepository(
 
                 while (c.moveToNext() && count < limit) {
                     val number = if (numberCol >= 0) c.getString(numberCol) ?: "Unknown" else "Unknown"
-                    val name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
+                    var name = if (nameCol >= 0) c.getString(nameCol) ?: "" else ""
+                    if (name.isBlank() && number != "Unknown") {
+                        name = com.example.util.ContactUtils.resolveContactName(context, number)
+                    }
                     val typeInt = if (typeCol >= 0) c.getInt(typeCol) else CallLog.Calls.MISSED_TYPE
                     val duration = if (durationCol >= 0) c.getInt(durationCol) else 0
                     val date = if (dateCol >= 0) c.getLong(dateCol) else System.currentTimeMillis()
@@ -476,20 +483,40 @@ class CallRepository(
     }
 
     suspend fun deleteCall(hostUid: String, callId: String): Result<Unit> {
+        val call = hostCallDao.getById(callId)
+        val idsToDelete = mutableSetOf(callId)
+        if (call != null) {
+            val minTs = call.timestamp - 6_000L
+            val maxTs = call.timestamp + 6_000L
+            val duplicates = hostCallDao.findMatchingCallIds(call.hostCode, call.phoneNumber, minTs, maxTs)
+            idsToDelete.addAll(duplicates)
+        }
+        val finalIds = idsToDelete.toList()
         // Delete from local Room cache immediately
-        hostCallDao.deleteById(callId)
+        hostCallDao.deleteMultiple(finalIds)
         // Delete from local client queue if present
-        callDao.deleteByCallId(callId)
+        callDao.deleteMultiple(finalIds)
         // Delete from Firestore cloud DB
-        return firestoreSource.deleteCall(hostUid, callId)
+        return firestoreSource.deleteMultipleCalls(hostUid, finalIds)
     }
 
     suspend fun deleteMultipleCalls(hostUid: String, callIds: List<String>): Result<Unit> {
+        val allIdsToDelete = callIds.toMutableSet()
+        for (id in callIds) {
+            val call = hostCallDao.getById(id)
+            if (call != null) {
+                val minTs = call.timestamp - 6_000L
+                val maxTs = call.timestamp + 6_000L
+                val duplicates = hostCallDao.findMatchingCallIds(call.hostCode, call.phoneNumber, minTs, maxTs)
+                allIdsToDelete.addAll(duplicates)
+            }
+        }
+        val finalIds = allIdsToDelete.toList()
         // Delete from local Room cache immediately
-        hostCallDao.deleteMultiple(callIds)
+        hostCallDao.deleteMultiple(finalIds)
         // Delete from local client queue if present
-        callDao.deleteMultiple(callIds)
+        callDao.deleteMultiple(finalIds)
         // Delete from Firestore cloud DB
-        return firestoreSource.deleteMultipleCalls(hostUid, callIds)
+        return firestoreSource.deleteMultipleCalls(hostUid, finalIds)
     }
 }
