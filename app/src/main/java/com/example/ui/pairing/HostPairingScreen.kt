@@ -375,7 +375,7 @@ fun HostPairingScreen(
  * Calls [onCodeScanned] with the raw decoded string when a QR is found.
  */
 @Composable
-private fun QrScannerOverlay(
+fun QrScannerOverlay(
     onCodeScanned: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
