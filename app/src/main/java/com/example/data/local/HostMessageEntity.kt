@@ -1,10 +1,17 @@
 package com.example.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.domain.model.SmsMessage
 
-@Entity(tableName = "host_messages")
+@Entity(
+    tableName = "host_messages",
+    indices = [
+        Index(value = ["hostCode", "receivedAt"]),
+        Index(value = ["receivedAt"])
+    ]
+)
 data class HostMessageEntity(
     @PrimaryKey
     val messageId: String,

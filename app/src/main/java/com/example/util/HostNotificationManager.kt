@@ -321,6 +321,20 @@ object HostNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Action 3: 1-Tap Mark Call as Read
+        val markReadIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_MARK_CALL_READ
+            putExtra(NotificationActionReceiver.EXTRA_CALL_ID, cleanCallId)
+            putExtra(NotificationActionReceiver.EXTRA_HOST_CODE, hostCode)
+            putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notifId)
+        }
+        val markReadPendingIntent = PendingIntent.getBroadcast(
+            context,
+            notifId + 3,
+            markReadIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             ?: return
@@ -343,6 +357,7 @@ object HostNotificationManager {
             .setContentIntent(contentPendingIntent)
             .addAction(R.drawable.ic_notification, "Call Back", dialPendingIntent)
             .addAction(R.drawable.ic_copy, "Copy Number", copyPendingIntent)
+            .addAction(R.drawable.ic_check, "Mark Read", markReadPendingIntent)
 
         notificationManager.notify(notifId, builder.build())
         Log.d(TAG, "Call notification displayed: id=$notifId, caller=$callerName, type=$callType")

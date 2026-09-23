@@ -1,11 +1,18 @@
 package com.example.data.local
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.domain.model.CallRecord
 import com.example.domain.model.CallType
 
-@Entity(tableName = "host_calls")
+@Entity(
+    tableName = "host_calls",
+    indices = [
+        Index(value = ["hostCode", "timestamp"]),
+        Index(value = ["timestamp"])
+    ]
+)
 data class HostCallEntity(
     @PrimaryKey
     val callId: String,

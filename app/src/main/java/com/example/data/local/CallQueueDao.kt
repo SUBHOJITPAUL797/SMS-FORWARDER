@@ -48,4 +48,7 @@ interface CallQueueDao {
 
     @Query("SELECT COUNT(*) FROM call_queue WHERE status = 'PENDING'")
     fun getPendingCountFlow(): Flow<Int>
+
+    @Query("DELETE FROM call_queue WHERE status = 'UPLOADED' AND timestamp < :beforeTimestamp")
+    suspend fun clearOldUploaded(beforeTimestamp: Long)
 }

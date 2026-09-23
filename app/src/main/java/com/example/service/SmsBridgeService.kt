@@ -162,50 +162,57 @@ class SmsBridgeService : Service() {
                             }
                         }
                     }
-                    // Start 5-minute heartbeat to update lastSeenAt on the link doc
-                    heartbeatJob?.cancel()
-                    heartbeatJob = launch {
-                        val clientUid = app.preferencesRepository.getOrCreateDeviceUid()
-                        val linkedHostCode = app.preferencesRepository.linkedUidFlow.firstOrNull() ?: ""
-                        if (clientUid.isNotEmpty() && linkedHostCode.isNotEmpty()) {
-                            while (true) {
-                                try {
-                                    app.smsRepository.updateClientLastSeen(linkedHostCode, clientUid)
-                                    Log.d(TAG, "Client heartbeat: updated lastSeenAt for $clientUid")
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Heartbeat failed", e)
+                    // Reactively observe linked Host code changes so heartbeat & link monitor run as soon as paired
+                    launch {
+                        app.preferencesRepository.linkedUidFlow.collect { rawHostCode ->
+                            val linkedHostCode = rawHostCode?.trim()?.uppercase() ?: ""
+                            val clientUid = app.preferencesRepository.getOrCreateDeviceUid()
+
+                            heartbeatJob?.cancel()
+                            heartbeatJob = null
+                            clientLinkObserverJob?.cancel()
+                            clientLinkObserverJob = null
+
+                            if (clientUid.isNotEmpty() && linkedHostCode.isNotEmpty()) {
+                                Log.i(TAG, "Client linked to host: $linkedHostCode. Starting heartbeat and link monitor.")
+
+                                // 1. Start 5-minute heartbeat to update lastSeenAt on the link doc
+                                heartbeatJob = launch {
+                                    while (true) {
+                                        try {
+                                            app.smsRepository.updateClientLastSeen(linkedHostCode, clientUid)
+                                            Log.d(TAG, "Client heartbeat: updated lastSeenAt for $clientUid")
+                                        } catch (e: Exception) {
+                                            Log.w(TAG, "Heartbeat failed", e)
+                                        }
+                                        kotlinx.coroutines.delay(5 * 60 * 1000L) // 5 minutes
+                                    }
                                 }
-                                kotlinx.coroutines.delay(5 * 60 * 1000L) // 5 minutes
-                            }
-                        }
-                    }
 
-                    // Real-time link monitor — triggers heads-up alert if Host disconnects this device
-                    clientLinkObserverJob?.cancel()
-                    clientLinkObserverJob = launch {
-                        val clientUid = app.preferencesRepository.getOrCreateDeviceUid()
-                        val linkedHostCode = app.preferencesRepository.linkedUidFlow.firstOrNull() ?: ""
-                        if (clientUid.isNotEmpty() && linkedHostCode.isNotEmpty()) {
-                            app.smsRepository.observeClientLink(linkedHostCode, clientUid).collect { doc ->
-                                if (doc != null) {
-                                    val active = doc["active"] as? Boolean ?: true
-                                    if (!active) {
-                                        Log.i(TAG, "Client device disconnected by host ($linkedHostCode). Alerting user.")
-                                        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                                        val disconnectNotif = NotificationCompat.Builder(this@SmsBridgeService, SmsBridgeFcmService.CHANNEL_ID)
-                                            .setSmallIcon(R.drawable.ic_notification)
-                                            .setContentTitle("⚠️ Disconnected by Host")
-                                            .setContentText("Your device was unlinked by Host ($linkedHostCode). Forwarding paused.")
-                                            .setStyle(NotificationCompat.BigTextStyle().bigText("Your device was unlinked by Host ($linkedHostCode). SMS and Call forwarding has been paused."))
-                                            .setPriority(NotificationCompat.PRIORITY_HIGH)
-                                            .setAutoCancel(true)
-                                            .build()
-                                        notificationManager?.notify(7771, disconnectNotif)
+                                // 2. Real-time link monitor — triggers heads-up alert if Host disconnects this device
+                                clientLinkObserverJob = launch {
+                                    app.smsRepository.observeClientLink(linkedHostCode, clientUid).collect { doc ->
+                                        if (doc != null) {
+                                            val active = doc["active"] as? Boolean ?: true
+                                            if (!active) {
+                                                Log.i(TAG, "Client device disconnected by host ($linkedHostCode). Alerting user.")
+                                                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                                                val disconnectNotif = NotificationCompat.Builder(this@SmsBridgeService, SmsBridgeFcmService.CHANNEL_ID)
+                                                    .setSmallIcon(R.drawable.ic_notification)
+                                                    .setContentTitle("⚠️ Disconnected by Host")
+                                                    .setContentText("Your device was unlinked by Host ($linkedHostCode). Forwarding paused.")
+                                                    .setStyle(NotificationCompat.BigTextStyle().bigText("Your device was unlinked by Host ($linkedHostCode). SMS and Call forwarding has been paused."))
+                                                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                                                    .setAutoCancel(true)
+                                                    .build()
+                                                notificationManager?.notify(7771, disconnectNotif)
 
-                                        app.preferencesRepository.clearLinkedDevice()
-                                        updateServiceNotification("SMS Bridge: Unlinked", "Disconnected by Host ($linkedHostCode)")
-                                        heartbeatJob?.cancel()
-                                        clientLinkObserverJob?.cancel()
+                                                app.preferencesRepository.clearLinkedDevice()
+                                                updateServiceNotification("SMS Bridge: Unlinked", "Disconnected by Host ($linkedHostCode)")
+                                                heartbeatJob?.cancel()
+                                                clientLinkObserverJob?.cancel()
+                                            }
+                                        }
                                     }
                                 }
                             }

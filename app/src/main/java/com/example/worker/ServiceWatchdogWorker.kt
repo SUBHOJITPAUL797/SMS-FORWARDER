@@ -40,10 +40,29 @@ class ServiceWatchdogWorker(
                     val serviceIntent = Intent(applicationContext, SmsBridgeService::class.java).apply {
                         putExtra("role_key", currentRole.key)
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        ContextCompat.startForegroundService(applicationContext, serviceIntent)
-                    } else {
-                        applicationContext.startService(serviceIntent)
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            ContextCompat.startForegroundService(applicationContext, serviceIntent)
+                        } else {
+                            applicationContext.startService(serviceIntent)
+                        }
+                    } catch (fse: Exception) {
+                        Log.w(TAG, "Direct startForegroundService restricted in background on Android 12+. Dispatched Alarm fallback.", fse)
+                        val restartIntent = Intent(applicationContext, com.example.receiver.BootReceiver::class.java).apply {
+                            action = "com.example.action.RESTART_SERVICE"
+                        }
+                        val pendingIntent = android.app.PendingIntent.getBroadcast(
+                            applicationContext,
+                            1002,
+                            restartIntent,
+                            android.app.PendingIntent.FLAG_ONE_SHOT or android.app.PendingIntent.FLAG_IMMUTABLE
+                        )
+                        val alarmManager = applicationContext.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+                        alarmManager?.set(
+                            android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                            android.os.SystemClock.elapsedRealtime() + 1000L,
+                            pendingIntent
+                        )
                     }
                 }
             }

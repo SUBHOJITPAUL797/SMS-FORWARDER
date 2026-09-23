@@ -25,11 +25,13 @@ class NotificationActionReceiver : BroadcastReceiver() {
         const val ACTION_COPY_SMS = "com.example.action.COPY_SMS"
         const val ACTION_COPY_CALL_NUMBER = "com.example.action.COPY_CALL_NUMBER"
         const val ACTION_MARK_READ = "com.example.action.MARK_READ"
+        const val ACTION_MARK_CALL_READ = "com.example.action.MARK_CALL_READ"
         const val ACTION_DISMISS = "com.example.action.DISMISS"
 
         const val EXTRA_OTP = "extra_otp"
         const val EXTRA_BODY = "extra_body"
         const val EXTRA_MESSAGE_ID = "extra_message_id"
+        const val EXTRA_CALL_ID = "extra_call_id"
         const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
         const val EXTRA_HOST_CODE = "extra_host_code"
         const val EXTRA_PHONE_NUMBER = "extra_phone_number"
@@ -99,6 +101,36 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     }
                 }
                 showToast(context, "Marked as read")
+            }
+
+            ACTION_MARK_CALL_READ -> {
+                if (notifId != -1) {
+                    notificationManager?.cancel(notifId)
+                }
+                val callId = intent.getStringExtra(EXTRA_CALL_ID) ?: ""
+                val passedHostCode = intent.getStringExtra(EXTRA_HOST_CODE)
+
+                val pendingResult = goAsync()
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val app = context.applicationContext as? SmsBridgeApp
+                        val hostCode = if (!passedHostCode.isNullOrEmpty()) {
+                            passedHostCode
+                        } else {
+                            app?.authRepository?.getHostCode() ?: ""
+                        }
+
+                        if (hostCode.isNotEmpty() && callId.isNotEmpty()) {
+                            app?.callRepository?.markCallAsRead(hostCode, callId)
+                            Log.d(TAG, "Call $callId successfully marked as read.")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error marking call $callId as read", e)
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+                showToast(context, "Call marked as read")
             }
 
             ACTION_DISMISS -> {

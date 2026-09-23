@@ -45,6 +45,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -2654,7 +2655,7 @@ private fun CallHistoryDialog(
 
     // Filter all calls matching this phone number (matching by last 10 digits to normalize area/country code)
     val callerLogs = remember(targetNumber, allCalls) {
-        if (isUnknown) {
+        val filtered = if (isUnknown) {
             allCalls.filter { it.phoneNumber.isBlank() || it.phoneNumber.equals("Unknown", ignoreCase = true) }
                 .sortedByDescending { it.timestamp }
         } else {
@@ -2668,6 +2669,7 @@ private fun CallHistoryDialog(
                 }
             }.sortedByDescending { it.timestamp }
         }
+        filtered.distinctBy { it.callId }
     }
 
     val totalCount = callerLogs.size
@@ -2676,7 +2678,7 @@ private fun CallHistoryDialog(
     val outgoingCount = callerLogs.count { it.callType == CallType.OUTGOING }
 
     val displayInitial = when {
-        hasContactName -> targetCall.contactName.trim().first().uppercaseChar().toString()
+        hasContactName -> targetCall.contactName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "#"
         isUnknown -> "?"
         else -> "#"
     }
@@ -2843,7 +2845,7 @@ private fun CallHistoryDialog(
                             .heightIn(max = 320.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(callerLogs, key = { it.callId }) { entry ->
+                        itemsIndexed(callerLogs, key = { index, entry -> "${entry.callId}_$index" }) { _, entry ->
                             val (typeLabel, typeColor, typeBg, typeIcon) = when (entry.callType) {
                                 CallType.MISSED -> Quadruple("Missed Call", Color(0xFFDC2626), Color(0xFFFEE2E2), Icons.Default.CallMissed)
                                 CallType.INCOMING -> Quadruple("Incoming", Color(0xFF16A34A), Color(0xFFDCFCE7), Icons.Default.CallReceived)

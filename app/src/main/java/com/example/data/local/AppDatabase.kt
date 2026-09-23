@@ -5,6 +5,9 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+
 @Database(
     entities = [
         SmsQueueEntity::class,
@@ -12,7 +15,7 @@ import androidx.room.RoomDatabase
         HostMessageEntity::class,
         HostCallEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,13 +28,25 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_host_messages_hostCode_receivedAt` ON `host_messages` (`hostCode`, `receivedAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_host_messages_receivedAt` ON `host_messages` (`receivedAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_host_calls_hostCode_timestamp` ON `host_calls` (`hostCode`, `timestamp`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_host_calls_timestamp` ON `host_calls` (`timestamp`)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "sms_bridge.db"
-                ).fallbackToDestructiveMigration().build()
+                )
+                    .addMigrations(MIGRATION_3_4)
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }

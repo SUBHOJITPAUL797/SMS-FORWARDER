@@ -170,6 +170,10 @@ class SmsRepository(
     }
 
     suspend fun syncAllPendingMessages() {
+        // Prune uploaded queue items older than 14 days to keep local DB slim
+        val fourteenDaysAgo = System.currentTimeMillis() - (14 * 24 * 3600 * 1000L)
+        smsDao.clearOldUploaded(fourteenDaysAgo)
+
         val pendingList = smsDao.getMessagesByStatus(QueueStatus.PENDING.name) +
                 smsDao.getMessagesByStatus(QueueStatus.FAILED.name)
         for (item in pendingList) {
@@ -328,9 +332,6 @@ class SmsRepository(
                             val entities = batch.upserted.map { HostMessageEntity.fromSmsMessage(hostCode, it) }
                             hostMessageDao.insertAll(entities)
                         }
-                        if (batch.removedIds.isNotEmpty()) {
-                            hostMessageDao.deleteMultiple(batch.removedIds)
-                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in host SMS live sync", e)
@@ -411,10 +412,11 @@ class SmsRepository(
     }
 
     suspend fun deleteMultipleSms(hostUid: String, messageIds: List<String>): Result<Unit> {
-        // Delete from local Room cache immediately
-        hostMessageDao.deleteMultiple(messageIds)
-        // Delete from local client queue if present
-        smsDao.deleteMultiple(messageIds)
+        // Delete from local Room cache immediately in chunks of 450 to avoid SQLite variable limits
+        messageIds.chunked(450).forEach { chunk ->
+            hostMessageDao.deleteMultiple(chunk)
+            smsDao.deleteMultiple(chunk)
+        }
         // Delete from Firestore cloud DB
         return firestoreSource.deleteMultipleSms(hostUid, messageIds)
     }

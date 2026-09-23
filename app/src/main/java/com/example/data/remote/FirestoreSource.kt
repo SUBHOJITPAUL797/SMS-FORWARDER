@@ -71,7 +71,7 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     suspend fun updateFcmToken(uid: String, token: String): Result<Unit> {
         return try {
             firestore.collection(COLLECTION_USERS).document(uid)
-                .update("fcmToken", token)
+                .set(mapOf("fcmToken" to token), SetOptions.merge())
                 .await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -280,16 +280,21 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     /**
      * Updates the lastSeenAt timestamp for a specific client link.
      * Called by the client's foreground service every 5 minutes as a heartbeat.
+     * Respects host disconnection: if active is false or doc does not exist, fails safely without overwriting active status.
      */
     suspend fun updateClientLastSeen(hostCode: String, clientUid: String): Result<Unit> {
         return try {
             val linkId = "${hostCode}__${clientUid}"
-            firestore.collection(COLLECTION_LINKS).document(linkId)
-                .update(mapOf(
-                    "lastSeenAt" to System.currentTimeMillis(),
-                    "active" to true
-                ))
-                .await()
+            val docRef = firestore.collection(COLLECTION_LINKS).document(linkId)
+            val snapshot = docRef.get().await()
+            if (!snapshot.exists()) {
+                return Result.failure(Exception("Link doc $linkId does not exist"))
+            }
+            val active = snapshot.getBoolean("active") ?: true
+            if (!active) {
+                return Result.failure(Exception("Client $clientUid was disconnected by host"))
+            }
+            docRef.update("lastSeenAt", System.currentTimeMillis()).await()
             Result.success(Unit)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to update lastSeenAt for $clientUid", e)
@@ -428,11 +433,14 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 .get()
                 .await()
 
-            val batch = firestore.batch()
-            for (doc in unreadDocs.documents) {
-                batch.update(doc.reference, "read", true)
+            val chunks = unreadDocs.documents.chunked(450)
+            for (chunk in chunks) {
+                val batch = firestore.batch()
+                for (doc in chunk) {
+                    batch.update(doc.reference, "read", true)
+                }
+                batch.commit().await()
             }
-            batch.commit().await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -599,11 +607,14 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                 .get()
                 .await()
 
-            val batch = firestore.batch()
-            for (doc in unreadDocs.documents) {
-                batch.update(doc.reference, "read", true)
+            val chunks = unreadDocs.documents.chunked(450)
+            for (chunk in chunks) {
+                val batch = firestore.batch()
+                for (doc in chunk) {
+                    batch.update(doc.reference, "read", true)
+                }
+                batch.commit().await()
             }
-            batch.commit().await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

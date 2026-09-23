@@ -186,7 +186,6 @@ fun ClientHomeScreen(
             },
             onDismiss = { showHostQrScanner = false }
         )
-        return
     }
 
     // Automatic update check in background on launch

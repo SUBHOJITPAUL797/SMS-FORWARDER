@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.smsbridge.v8k2p"
     minSdk = 24
     targetSdk = 36
-    versionCode = 23
-    versionName = "1.0.22"
+    versionCode = 25
+    versionName = "1.0.24"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

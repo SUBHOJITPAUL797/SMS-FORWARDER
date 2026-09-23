@@ -84,9 +84,9 @@ class PairingRepository(
     }
 
     suspend fun pairAsHost(code: String): Result<String> {
-        val hostUid = preferencesRepository.getOrCreateDeviceUid()
+        val hostCode = preferencesRepository.getOrCreateHostCode()
         val cleanCode = code.trim().uppercase()
-        val result = firestoreSource.pairWithCode(cleanCode, hostUid)
+        val result = firestoreSource.pairWithCode(cleanCode, hostCode)
         return if (result.isSuccess) {
             val (clientUid, clientDeviceName) = result.getOrThrow()
             // Set the role to HOST — the Host identity is its own hostCode, NOT a single linkedUid.

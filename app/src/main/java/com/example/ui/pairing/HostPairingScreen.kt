@@ -53,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -382,7 +383,19 @@ fun QrScannerOverlay(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
+    var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var scanned by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                cameraProviderRef?.unbindAll()
+            } catch (_: Exception) {}
+            try {
+                executor.shutdown()
+            } catch (_: Exception) {}
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
@@ -391,6 +404,7 @@ fun QrScannerOverlay(
                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                 cameraProviderFuture.addListener({
                     val cameraProvider = cameraProviderFuture.get()
+                    cameraProviderRef = cameraProvider
 
                     val preview = Preview.Builder().build().also {
                         it.surfaceProvider = previewView.surfaceProvider
@@ -407,14 +421,16 @@ fun QrScannerOverlay(
 
                     imageAnalysis.setAnalyzer(executor) { imageProxy ->
                         if (!scanned) {
-                            val buffer = imageProxy.planes[0].buffer
+                            val plane = imageProxy.planes[0]
+                            val buffer = plane.buffer
                             val bytes = ByteArray(buffer.remaining())
                             buffer.get(bytes)
                             val width = imageProxy.width
                             val height = imageProxy.height
+                            val rowStride = plane.rowStride
                             try {
                                 val source = PlanarYUVLuminanceSource(
-                                    bytes, width, height, 0, 0, width, height, false
+                                    bytes, rowStride, height, 0, 0, width, height, false
                                 )
                                 val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
                                 val result = reader.decode(binaryBitmap)

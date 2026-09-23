@@ -26,6 +26,15 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.Collections
 import java.util.LinkedHashMap
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
+import com.example.worker.CallUploadWorker
 
 class CallRepository(
     private val context: Context,
@@ -125,10 +134,12 @@ class CallRepository(
                 callDao.updateStatus(callId, QueueStatus.UPLOADED.name)
                 Log.i(TAG, "Call $callId successfully uploaded to Host $hostUid")
             } else {
-                Log.w(TAG, "Failed to upload call immediately, remains PENDING in queue", uploadResult.exceptionOrNull())
+                Log.w(TAG, "Failed to upload call immediately, remains PENDING in queue; scheduling worker", uploadResult.exceptionOrNull())
+                enqueueUploadWorker(callId)
             }
         } else {
-            Log.w(TAG, "No linked Host UID found. Call stored in queue.")
+            Log.w(TAG, "No linked Host UID found. Call stored in queue; scheduling worker.")
+            enqueueUploadWorker(callId)
         }
 
         return Result.success(Unit)
@@ -137,6 +148,10 @@ class CallRepository(
     suspend fun syncAllPendingCalls(): Int {
         val hostUid = preferencesRepository.linkedUidFlow.firstOrNull()
         if (hostUid.isNullOrEmpty()) return 0
+
+        // Prune uploaded queue items older than 14 days to keep local DB slim
+        val fourteenDaysAgo = System.currentTimeMillis() - (14 * 24 * 3600 * 1000L)
+        callDao.clearOldUploaded(fourteenDaysAgo)
 
         val pending = callDao.getCallsByStatus(QueueStatus.PENDING.name)
         if (pending.isEmpty()) return 0
@@ -184,7 +199,7 @@ class CallRepository(
     }
 
     fun generateCallId(phoneNumber: String, timestamp: Long, type: CallType): String {
-        val cleanNum = phoneNumber.filter { it.isDigit() }.takeLast(8)
+        val cleanNum = phoneNumber.filter { it.isDigit() }.takeLast(8).ifEmpty { phoneNumber.trim() }
         val timeBucket = timestamp / 5_000L
         val hash = Math.abs("${cleanNum}_${type.name}_$timeBucket".hashCode())
         return "call_${timeBucket}_$hash"
@@ -325,6 +340,8 @@ class CallRepository(
                         val uploadRes = firestoreSource.uploadCall(hostUid, record)
                         if (uploadRes.isSuccess) {
                             callDao.updateStatus(entity.callId, QueueStatus.UPLOADED.name)
+                        } else {
+                            enqueueUploadWorker(entity.callId)
                         }
                     }
                     kotlinx.coroutines.delay(20)
@@ -427,6 +444,8 @@ class CallRepository(
                         val res = firestoreSource.uploadCall(hostUid, record)
                         if (res.isSuccess) {
                             callDao.updateStatus(callId, QueueStatus.UPLOADED.name)
+                        } else {
+                            enqueueUploadWorker(callId)
                         }
                         count++
                     }
@@ -454,9 +473,6 @@ class CallRepository(
                         if (batch.upserted.isNotEmpty()) {
                             val entities = batch.upserted.map { HostCallEntity.fromCallRecord(hostCode, it) }
                             hostCallDao.insertAll(entities)
-                        }
-                        if (batch.removedIds.isNotEmpty()) {
-                            hostCallDao.deleteMultiple(batch.removedIds)
                         }
                     }
                 } catch (e: Exception) {
@@ -512,10 +528,11 @@ class CallRepository(
             idsToDelete.addAll(duplicates)
         }
         val finalIds = idsToDelete.toList()
-        // Delete from local Room cache immediately
-        hostCallDao.deleteMultiple(finalIds)
-        // Delete from local client queue if present
-        callDao.deleteMultiple(finalIds)
+        // Delete from local Room cache immediately in chunks of 450 to avoid SQLite variable limits
+        finalIds.chunked(450).forEach { chunk ->
+            hostCallDao.deleteMultiple(chunk)
+            callDao.deleteMultiple(chunk)
+        }
         // Delete from Firestore cloud DB
         return firestoreSource.deleteMultipleCalls(hostUid, finalIds)
     }
@@ -532,11 +549,72 @@ class CallRepository(
             }
         }
         val finalIds = allIdsToDelete.toList()
-        // Delete from local Room cache immediately
-        hostCallDao.deleteMultiple(finalIds)
-        // Delete from local client queue if present
-        callDao.deleteMultiple(finalIds)
+        // Delete from local Room cache immediately in chunks of 450 to avoid SQLite variable limits
+        finalIds.chunked(450).forEach { chunk ->
+            hostCallDao.deleteMultiple(chunk)
+            callDao.deleteMultiple(chunk)
+        }
         // Delete from Firestore cloud DB
         return firestoreSource.deleteMultipleCalls(hostUid, finalIds)
+    }
+
+    suspend fun uploadPendingCall(callId: String): Result<Unit> {
+        val hostUid = preferencesRepository.linkedUidFlow.firstOrNull()
+        if (hostUid.isNullOrEmpty()) {
+            return Result.failure(Exception("No linked Host UID found"))
+        }
+        val item = callDao.getByCallId(callId) ?: return Result.failure(Exception("Call not found in queue: $callId"))
+        if (item.status == QueueStatus.UPLOADED.name) {
+            return Result.success(Unit)
+        }
+
+        val clientUid = preferencesRepository.getOrCreateDeviceUid()
+        val clientDeviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+
+        val record = CallRecord(
+            callId = item.callId,
+            phoneNumber = item.phoneNumber,
+            contactName = item.contactName,
+            callType = CallType.fromString(item.callType),
+            durationSeconds = item.durationSeconds,
+            timestamp = item.timestamp,
+            uploadedAt = System.currentTimeMillis(),
+            clientUid = clientUid,
+            clientDeviceName = clientDeviceName,
+            simSlot = item.simSlot,
+            read = false
+        )
+
+        val res = firestoreSource.uploadCall(hostUid, record)
+        return if (res.isSuccess) {
+            callDao.updateStatus(item.callId, QueueStatus.UPLOADED.name)
+            Result.success(Unit)
+        } else {
+            callDao.incrementRetryCount(item.callId)
+            Result.failure(res.exceptionOrNull() ?: Exception("Upload failed"))
+        }
+    }
+
+    fun enqueueUploadWorker(callId: String) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val inputData = Data.Builder()
+            .putString(CallUploadWorker.KEY_CALL_ID, callId)
+            .build()
+
+        val uploadRequest = OneTimeWorkRequestBuilder<CallUploadWorker>()
+            .setConstraints(constraints)
+            .setInputData(inputData)
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                10,
+                TimeUnit.SECONDS
+            )
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+
+        WorkManager.getInstance(context).enqueue(uploadRequest)
     }
 }

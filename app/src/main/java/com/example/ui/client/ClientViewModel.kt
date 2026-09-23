@@ -157,6 +157,12 @@ class ClientViewModel(
         onRoleReset()
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                val app = SmsBridgeApp.instance
+                val stopIntent = Intent(app, SmsBridgeService::class.java).apply {
+                    action = SmsBridgeService.ACTION_STOP_SERVICE
+                }
+                app.startService(stopIntent)
+                app.preferencesRepository.setServiceActive(false)
                 authRepository.resetRole()
             } catch (e: Exception) {
                 // Ignore
@@ -168,6 +174,12 @@ class ClientViewModel(
         onLoggedOut()
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                val app = SmsBridgeApp.instance
+                val stopIntent = Intent(app, SmsBridgeService::class.java).apply {
+                    action = SmsBridgeService.ACTION_STOP_SERVICE
+                }
+                app.startService(stopIntent)
+                app.preferencesRepository.setServiceActive(false)
                 authRepository.logout()
             } catch (e: Exception) {
                 // Ignore
