@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.smsbridge.v8k2p"
     minSdk = 24
     targetSdk = 36
-    versionCode = 27
-    versionName = "1.0.26"
+    versionCode = 28
+    versionName = "1.0.27"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -44,6 +44,8 @@ android {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       if (file(keystorePath).exists()) {
         signingConfig = signingConfigs.getByName("release")
+      } else {
+        signingConfig = signingConfigs.getByName("debug")
       }
     }
     debug {
