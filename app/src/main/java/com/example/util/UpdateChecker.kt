@@ -99,14 +99,27 @@ object UpdateChecker {
                 var apkSizeBytes = 0L
                 val assets = json.optJSONArray("assets")
                 if (assets != null && assets.length() > 0) {
+                    var candidateUrl = ""
+                    var candidateSize = 0L
                     for (i in 0 until assets.length()) {
                         val asset = assets.getJSONObject(i)
                         val assetName = asset.optString("name", "")
                         if (assetName.endsWith(".apk", ignoreCase = true)) {
-                            downloadUrl = asset.optString("browser_download_url", "")
-                            apkSizeBytes = asset.optLong("size", 0L)
-                            break
+                            val url = asset.optString("browser_download_url", "")
+                            val size = asset.optLong("size", 0L)
+                            if (!assetName.contains("debug", ignoreCase = true)) {
+                                downloadUrl = url
+                                apkSizeBytes = size
+                                break
+                            } else if (candidateUrl.isEmpty()) {
+                                candidateUrl = url
+                                candidateSize = size
+                            }
                         }
+                    }
+                    if (downloadUrl.isEmpty() && candidateUrl.isNotEmpty()) {
+                        downloadUrl = candidateUrl
+                        apkSizeBytes = candidateSize
                     }
                 }
 
