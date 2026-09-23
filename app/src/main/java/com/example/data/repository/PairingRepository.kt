@@ -44,12 +44,21 @@ class PairingRepository(
         )
     }
 
-    suspend fun directPairClientToHost(hostCode: String): Result<String> {
+    suspend fun directPairClientToHost(hostCode: String, hostPhoneNumber: String? = null): Result<String> {
         val cleanHostCode = hostCode.trim().uppercase()
         val clientUid = preferencesRepository.getOrCreateDeviceUid()
         val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
         preferencesRepository.setUserRole(UserRole.CLIENT)
         preferencesRepository.setLinkedDevice(cleanHostCode, "Host ($cleanHostCode)")
+
+        var finalPhone = hostPhoneNumber?.trim()
+        if (finalPhone.isNullOrBlank()) {
+            finalPhone = firestoreSource.getHostPhoneNumber(cleanHostCode)
+        }
+        if (!finalPhone.isNullOrBlank()) {
+            preferencesRepository.setFallbackDestinationNumber(finalPhone)
+            preferencesRepository.setHostPhoneNumber(finalPhone)
+        }
 
         // Register link in firestore
         firestoreSource.registerDirectLink(cleanHostCode, clientUid, deviceName)

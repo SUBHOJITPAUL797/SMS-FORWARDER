@@ -51,6 +51,20 @@ class HostViewModel(
         }
     }
 
+    val hostPhoneNumber: StateFlow<String> = SmsBridgeApp.instance.preferencesRepository
+        .hostPhoneNumberFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    fun updateHostPhoneNumber(phone: String) {
+        viewModelScope.launch {
+            SmsBridgeApp.instance.preferencesRepository.setHostPhoneNumber(phone)
+            val code = _hostCode.value
+            if (code.isNotBlank()) {
+                SmsBridgeApp.instance.firestoreSource.saveHostPhoneNumber(code, phone)
+            }
+        }
+    }
+
     val connectedClients: StateFlow<List<Map<String, Any>>> = _hostCode
         .flatMapLatest { code ->
             if (code.isNotEmpty()) {

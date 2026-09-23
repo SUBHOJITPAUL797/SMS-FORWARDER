@@ -124,13 +124,102 @@ class SmsRepository(
                 Log.d(TAG, "SMS $messageId uploaded immediately to Firestore.")
                 return Result.success(Unit)
             } else {
-                Log.w(TAG, "Immediate upload failed for $messageId. Enqueuing WorkManager retry.")
+                Log.w(TAG, "Immediate upload failed for $messageId. Triggering Smart Hybrid Cellular SMS fallback if enabled.")
             }
+        } else {
+            Log.w(TAG, "No linked Host UID found or device offline. Triggering Smart Hybrid Cellular SMS fallback if enabled.")
         }
 
-        // 3. If immediate upload failed or not connected, enqueue expedited WorkManager job
+        // 3. Smart Hybrid Fallback: Send via Cellular SMS (using Jio/Carrier 100 free SMS daily quota)
+        trySendOfflineCellularFallback(sender, body)
+
+        // 4. Enqueue expedited WorkManager job to also sync to Cloud DB when internet reconnects
         enqueueUploadWorker(messageId)
         return Result.success(Unit)
+    }
+
+    suspend fun trySendOfflineCellularFallback(sender: String, body: String): Boolean {
+        try {
+            val isFallbackEnabled = preferencesRepository.isOfflineSmsFallbackEnabledFlow.firstOrNull() ?: true
+            if (!isFallbackEnabled) {
+                Log.d(TAG, "Offline cellular SMS fallback is disabled by user.")
+                return false
+            }
+
+            val destinationNumber = preferencesRepository.fallbackDestinationNumberFlow.firstOrNull()?.trim() ?: ""
+            if (destinationNumber.isBlank()) {
+                Log.w(TAG, "No destination mobile number configured for offline cellular SMS fallback.")
+                return false
+            }
+
+            // Check and reset daily quota for midnight rollovers
+            val (currentSim1Count, currentSim2Count) = preferencesRepository.checkAndResetDailyQuota()
+            val sim1Limit = preferencesRepository.dailySmsLimitSim1Flow.firstOrNull() ?: 100
+            val sim2Limit = preferencesRepository.dailySmsLimitSim2Flow.firstOrNull() ?: 100
+            val preferredSlot = preferencesRepository.preferredSimSlotFlow.firstOrNull() ?: 0 // 0 = Auto/SIM1, 1 = SIM1, 2 = SIM2
+            val isRolloverEnabled = preferencesRepository.isDualSimRolloverEnabledFlow.firstOrNull() ?: true
+
+            val availableSims = com.example.util.SimUtils.getAvailableSims(context)
+            if (availableSims.isEmpty()) {
+                Log.w(TAG, "No active SIM card found on device to send offline SMS.")
+                return false
+            }
+
+            val sim1Info = availableSims.find { it.slotIndex == 0 } ?: availableSims.firstOrNull()
+            val sim2Info = availableSims.find { it.slotIndex == 1 }
+
+            var targetSim: com.example.util.SimSlotInfo? = null
+            var targetSlotIndex = 0
+
+            if (preferredSlot == 2 && sim2Info != null) {
+                // User prefers SIM 2
+                if (currentSim2Count < sim2Limit) {
+                    targetSim = sim2Info
+                    targetSlotIndex = 1
+                } else if (isRolloverEnabled && sim1Info != null && currentSim1Count < sim1Limit) {
+                    Log.i(TAG, "SIM 2 quota exhausted ($currentSim2Count/$sim2Limit). Rolling over to SIM 1 ($currentSim1Count/$sim1Limit).")
+                    targetSim = sim1Info
+                    targetSlotIndex = 0
+                } else {
+                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs. Skipping cellular SMS to prevent carrier overage.")
+                    return false
+                }
+            } else {
+                // Default: prefers SIM 1 (or Auto)
+                if (sim1Info != null && currentSim1Count < sim1Limit) {
+                    targetSim = sim1Info
+                    targetSlotIndex = 0
+                } else if (isRolloverEnabled && sim2Info != null && currentSim2Count < sim2Limit) {
+                    Log.i(TAG, "SIM 1 quota exhausted ($currentSim1Count/$sim1Limit). Rolling over to SIM 2 ($currentSim2Count/$sim2Limit).")
+                    targetSim = sim2Info
+                    targetSlotIndex = 1
+                } else {
+                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs. Skipping cellular SMS to prevent carrier overage.")
+                    return false
+                }
+            }
+
+            val formattedText = com.example.util.SimUtils.formatForwardedSms(sender, body)
+            val sendResult = com.example.util.SimUtils.sendCellularSms(
+                context = context,
+                subscriptionId = targetSim.subscriptionId,
+                destinationNumber = destinationNumber,
+                messageText = formattedText
+            )
+
+            return if (sendResult.isSuccess) {
+                val parts = sendResult.getOrNull() ?: 1
+                preferencesRepository.incrementSmsSentCount(targetSlotIndex, parts)
+                Log.i(TAG, "Successfully dispatched offline fallback SMS to $destinationNumber via SIM ${targetSlotIndex + 1} ($parts parts)")
+                true
+            } else {
+                Log.e(TAG, "Failed to send offline fallback SMS via cellular SIM", sendResult.exceptionOrNull())
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error in trySendOfflineCellularFallback", e)
+            return false
+        }
     }
 
     suspend fun uploadPendingMessage(messageId: String): Result<Unit> {

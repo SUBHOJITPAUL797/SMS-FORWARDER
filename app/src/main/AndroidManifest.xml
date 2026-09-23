@@ -9,9 +9,9 @@
     <!-- Camera for QR Code Scanning -->
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- SMS Permissions -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
 
     <!-- Phone Call Permissions -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />

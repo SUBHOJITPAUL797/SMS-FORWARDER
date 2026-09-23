@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
@@ -73,6 +74,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -196,6 +198,7 @@ fun HostHomeScreen(
     val hasMoreCalls by viewModel.hasMoreCalls.collectAsStateWithLifecycle()
     val isLoadingOlderCalls by viewModel.isLoadingOlderCalls.collectAsStateWithLifecycle()
     val unreadCallsCount by viewModel.unreadCallsCount.collectAsStateWithLifecycle()
+    val hostPhoneNumber by viewModel.hostPhoneNumber.collectAsStateWithLifecycle()
 
     val pullToRefreshState = rememberPullToRefreshState()
     val context = LocalContext.current
@@ -510,6 +513,8 @@ fun HostHomeScreen(
     if (showHostQrDialog) {
         HostQrCodeDialog(
             hostCode = hostCode,
+            hostPhoneNumber = hostPhoneNumber,
+            onUpdateHostPhoneNumber = { viewModel.updateHostPhoneNumber(it) },
             onDismiss = { showHostQrDialog = false },
             onScanClient = {
                 showHostQrDialog = false
@@ -3030,14 +3035,24 @@ private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third:
 @Composable
 private fun HostQrCodeDialog(
     hostCode: String,
+    hostPhoneNumber: String,
+    onUpdateHostPhoneNumber: (String) -> Unit,
     onDismiss: () -> Unit,
     onScanClient: () -> Unit,
     onCopyCode: () -> Unit
 ) {
-    val qrBitmap = remember(hostCode) {
+    val context = LocalContext.current
+    var editingPhone by remember { mutableStateOf(false) }
+    var phoneInput by remember(hostPhoneNumber) { mutableStateOf(hostPhoneNumber) }
+
+    val qrBitmap = remember(hostCode, hostPhoneNumber) {
         if (hostCode.isNotBlank()) {
-            QrCodeUtils.generateQrBitmap(QrCodeUtils.encodeCode(hostCode), 600)
+            QrCodeUtils.generateQrBitmap(QrCodeUtils.encodeCode(hostCode, hostPhoneNumber.ifBlank { null }), 600)
         } else null
+    }
+
+    val detectedSims = remember(context) {
+        com.example.util.SimUtils.getAvailableSims(context)
     }
 
     Dialog(
@@ -3182,6 +3197,152 @@ private fun HostQrCodeDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Copy", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Host Mobile Number & Detected SIM Section (For Offline Cellular Fallback)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Phone,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Host Mobile (For Offline SMS)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { editingPhone = !editingPhone },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (editingPhone) Icons.Default.Check else Icons.Default.Edit,
+                                    contentDescription = "Edit phone",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        if (editingPhone) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = phoneInput,
+                                onValueChange = { phoneInput = it },
+                                label = { Text("Host Phone Number (+91...)") },
+                                placeholder = { Text("+91 9876543210") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = {
+                                    phoneInput = hostPhoneNumber
+                                    editingPhone = false
+                                }) {
+                                    Text("Cancel", fontSize = 12.sp)
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Button(
+                                    onClick = {
+                                        onUpdateHostPhoneNumber(phoneInput.trim())
+                                        editingPhone = false
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                ) {
+                                    Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (hostPhoneNumber.isNotBlank()) hostPhoneNumber else "Not Set (Tap edit to add)",
+                                fontSize = 13.5.sp,
+                                fontWeight = if (hostPhoneNumber.isNotBlank()) FontWeight.Bold else FontWeight.Normal,
+                                color = if (hostPhoneNumber.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        }
+
+                        // Detected SIMs quick picker on Host
+                        if (detectedSims.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Detected SIM(s) on this device:",
+                                fontSize = 10.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                detectedSims.forEach { sim ->
+                                    val simPhone = sim.phoneNumber
+                                    val label = "SIM ${sim.slotIndex + 1}: ${sim.displayName}" + (if (!simPhone.isNullOrBlank()) " ($simPhone)" else "")
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                        modifier = Modifier.clickable {
+                                            if (!simPhone.isNullOrBlank()) {
+                                                phoneInput = simPhone
+                                                onUpdateHostPhoneNumber(simPhone)
+                                            } else {
+                                                editingPhone = true
+                                            }
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.SimCard,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 10.5.sp,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

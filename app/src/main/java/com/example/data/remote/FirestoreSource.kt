@@ -79,6 +79,26 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
         }
     }
 
+    suspend fun saveHostPhoneNumber(hostCode: String, phoneNumber: String): Result<Unit> {
+        return try {
+            firestore.collection(COLLECTION_USERS).document(hostCode)
+                .set(mapOf("phoneNumber" to phoneNumber.trim()), SetOptions.merge())
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getHostPhoneNumber(hostCode: String): String? {
+        return try {
+            val doc = firestore.collection(COLLECTION_USERS).document(hostCode).get().await()
+            doc.getString("phoneNumber")?.ifBlank { null }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     // ----------------- Pairing APIs -----------------
 
     suspend fun createPairingCode(

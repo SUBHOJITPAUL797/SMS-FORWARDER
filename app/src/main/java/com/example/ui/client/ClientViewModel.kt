@@ -102,6 +102,58 @@ class ClientViewModel(
         }
     }
 
+    // --- Offline Cellular SMS Fallback StateFlows & Setters ---
+
+    private val prefs = SmsBridgeApp.instance.preferencesRepository
+
+    val isOfflineSmsFallbackEnabled: StateFlow<Boolean> = prefs.isOfflineSmsFallbackEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val fallbackDestinationNumber: StateFlow<String> = prefs.fallbackDestinationNumberFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+
+    val preferredSimSlot: StateFlow<Int> = prefs.preferredSimSlotFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val dailySmsLimitSim1: StateFlow<Int> = prefs.dailySmsLimitSim1Flow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 100)
+
+    val dailySmsLimitSim2: StateFlow<Int> = prefs.dailySmsLimitSim2Flow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 100)
+
+    val dailySmsSentCountSim1: StateFlow<Int> = prefs.dailySmsSentCountSim1Flow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val dailySmsSentCountSim2: StateFlow<Int> = prefs.dailySmsSentCountSim2Flow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val isDualSimRolloverEnabled: StateFlow<Boolean> = prefs.isDualSimRolloverEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    fun setOfflineSmsFallbackEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setOfflineSmsFallbackEnabled(enabled) }
+    }
+
+    fun setFallbackDestinationNumber(number: String) {
+        viewModelScope.launch { prefs.setFallbackDestinationNumber(number) }
+    }
+
+    fun setPreferredSimSlot(slot: Int) {
+        viewModelScope.launch { prefs.setPreferredSimSlot(slot) }
+    }
+
+    fun setDailySmsLimitSim1(limit: Int) {
+        viewModelScope.launch { prefs.setDailySmsLimitSim1(limit) }
+    }
+
+    fun setDailySmsLimitSim2(limit: Int) {
+        viewModelScope.launch { prefs.setDailySmsLimitSim2(limit) }
+    }
+
+    fun setDualSimRolloverEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setDualSimRolloverEnabled(enabled) }
+    }
+
     fun syncRealInbox(
         scope: com.example.data.repository.InboxSyncScope = com.example.data.repository.InboxSyncScope.ALL_TIME,
         onResult: (com.example.data.repository.SyncResult?, Boolean) -> Unit
@@ -137,12 +189,26 @@ class ClientViewModel(
         }
     }
 
-    fun updateLinkedHostCode(hostCode: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+    fun updateLinkedHostCode(
+        hostCode: String,
+        hostPhoneNumber: String? = null,
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
+    ) {
         viewModelScope.launch {
             val cleanCode = hostCode.trim().uppercase()
             authRepository.setUserRoleLocal(com.example.domain.model.UserRole.CLIENT)
             val preferences = com.example.SmsBridgeApp.instance.preferencesRepository
             preferences.setLinkedDevice(cleanCode, "Host ($cleanCode)")
+
+            var phone = hostPhoneNumber?.trim()
+            if (phone.isNullOrBlank()) {
+                phone = SmsBridgeApp.instance.firestoreSource.getHostPhoneNumber(cleanCode)
+            }
+            if (!phone.isNullOrBlank()) {
+                preferences.setFallbackDestinationNumber(phone)
+                preferences.setHostPhoneNumber(phone)
+            }
+
             val res = smsRepository.registerClientLink(cleanCode)
             smsRepository.syncAllPendingMessages()
             if (res.isSuccess) {

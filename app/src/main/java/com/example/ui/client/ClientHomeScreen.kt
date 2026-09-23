@@ -15,6 +15,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +48,12 @@ import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.SimCard
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import com.example.ui.pairing.QrScannerOverlay
 import com.example.util.QrCodeUtils
 import androidx.compose.material3.Button
@@ -142,6 +150,18 @@ fun ClientHomeScreen(
     val uploadedCallsCount by viewModel.uploadedCallsCount.collectAsStateWithLifecycle()
     val pendingCallsCount by viewModel.pendingCallsCount.collectAsStateWithLifecycle()
 
+    val isOfflineSmsFallbackEnabled by viewModel.isOfflineSmsFallbackEnabled.collectAsStateWithLifecycle()
+    val fallbackDestinationNumber by viewModel.fallbackDestinationNumber.collectAsStateWithLifecycle()
+    val preferredSimSlot by viewModel.preferredSimSlot.collectAsStateWithLifecycle()
+    val dailySmsLimitSim1 by viewModel.dailySmsLimitSim1.collectAsStateWithLifecycle()
+    val dailySmsLimitSim2 by viewModel.dailySmsLimitSim2.collectAsStateWithLifecycle()
+    val dailySmsSentCountSim1 by viewModel.dailySmsSentCountSim1.collectAsStateWithLifecycle()
+    val dailySmsSentCountSim2 by viewModel.dailySmsSentCountSim2.collectAsStateWithLifecycle()
+    val isDualSimRolloverEnabled by viewModel.isDualSimRolloverEnabled.collectAsStateWithLifecycle()
+
+    var showDestinationNumberDialog by remember { mutableStateOf(false) }
+    var showQuotaSettingsDialog by remember { mutableStateOf(false) }
+
     var isServiceRunning by remember { mutableStateOf(true) }
     var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
@@ -175,12 +195,13 @@ fun ClientHomeScreen(
     if (showHostQrScanner) {
         QrScannerOverlay(
             onCodeScanned = { rawValue ->
-                val parsed = QrCodeUtils.parseScannedQr(rawValue)
-                if (parsed != null) {
+                val qrData = QrCodeUtils.parseScannedQrData(rawValue)
+                if (qrData != null) {
                     showHostQrScanner = false
-                    Toast.makeText(context, "Scanned Host Code: $parsed. Connecting...", Toast.LENGTH_SHORT).show()
-                    viewModel.updateLinkedHostCode(parsed) { success, msg ->
-                        Toast.makeText(context, if (success) "Connected to Host ($parsed)!" else msg, Toast.LENGTH_SHORT).show()
+                    val phoneMsg = if (!qrData.phoneNumber.isNullOrBlank()) " (SMS Fallback: ${qrData.phoneNumber})" else ""
+                    Toast.makeText(context, "Scanned Host Code: ${qrData.code}$phoneMsg. Connecting...", Toast.LENGTH_SHORT).show()
+                    viewModel.updateLinkedHostCode(qrData.code, qrData.phoneNumber) { success, msg ->
+                        Toast.makeText(context, if (success) "Connected to Host (${qrData.code})!" else msg, Toast.LENGTH_SHORT).show()
                     }
                 }
             },
@@ -376,7 +397,157 @@ fun ClientHomeScreen(
         )
     }
 
+    // Fallback Destination Mobile Number Dialog
+    if (showDestinationNumberDialog) {
+        var tempNumber by remember(fallbackDestinationNumber) { mutableStateOf(fallbackDestinationNumber) }
+        AlertDialog(
+            onDismissRequest = { showDestinationNumberDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Phone, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Fallback Host Mobile Number", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "When offline or without internet, incoming SMS will be forwarded directly via cellular SMS to this mobile number.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = tempNumber,
+                        onValueChange = { tempNumber = it },
+                        label = { Text("Host Mobile Number") },
+                        placeholder = { Text("+91 9876543210") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.setFallbackDestinationNumber(tempNumber.trim())
+                    showDestinationNumberDialog = false
+                    Toast.makeText(context, "Fallback number updated!", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDestinationNumberDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Daily SMS Quota & Dual-SIM Rollover Settings Dialog
+    if (showQuotaSettingsDialog) {
+        var tempLimit1 by remember(dailySmsLimitSim1) { mutableStateOf(dailySmsLimitSim1.toString()) }
+        var tempLimit2 by remember(dailySmsLimitSim2) { mutableStateOf(dailySmsLimitSim2.toString()) }
+        var tempRollover by remember(isDualSimRolloverEnabled) { mutableStateOf(isDualSimRolloverEnabled) }
+
+        AlertDialog(
+            onDismissRequest = { showQuotaSettingsDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("SMS Quotas & Dual-SIM", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "Configure your daily free SMS limits (Default: 100 for Jio/Airtel plans). To protect against extra carrier balance deductions, cellular SMS stops when limits are reached.",
+                        fontSize = 12.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = tempLimit1,
+                        onValueChange = { tempLimit1 = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("SIM 1 Daily Limit (e.g. 100)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = tempLimit2,
+                        onValueChange = { tempLimit2 = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("SIM 2 Daily Limit (e.g. 100)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Smart Dual-SIM Rollover", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                            Text(
+                                "When SIM 1 quota is used up, automatically use SIM 2 to continue forwarding.",
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = tempRollover,
+                            onCheckedChange = { tempRollover = it }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val l1 = tempLimit1.toIntOrNull()?.coerceAtLeast(1) ?: 100
+                    val l2 = tempLimit2.toIntOrNull()?.coerceAtLeast(1) ?: 100
+                    viewModel.setDailySmsLimitSim1(l1)
+                    viewModel.setDailySmsLimitSim2(l2)
+                    viewModel.setDualSimRolloverEnabled(tempRollover)
+                    showQuotaSettingsDialog = false
+                    Toast.makeText(context, "Quota & Rollover settings saved!", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showQuotaSettingsDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     // Permission states
+    var hasSendSmsPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val sendSmsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasSendSmsPermission = isGranted
+        if (isGranted) {
+            viewModel.setOfflineSmsFallbackEnabled(true)
+            Toast.makeText(context, "SEND_SMS permission granted! Offline fallback enabled.", Toast.LENGTH_SHORT).show()
+        } else {
+            viewModel.setOfflineSmsFallbackEnabled(false)
+            Toast.makeText(context, "SEND_SMS permission required for offline cellular fallback.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val availableSims = remember(context) {
+        com.example.util.SimUtils.getAvailableSims(context)
+    }
+
     var hasSmsPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED &&
@@ -837,6 +1008,7 @@ fun ClientHomeScreen(
             item {
                 var showChangeDialog by remember { mutableStateOf(false) }
                 var newHostCodeInput by remember { mutableStateOf("") }
+                var newHostPhoneInput by remember { mutableStateOf("") }
                 var isConnecting by remember { mutableStateOf(false) }
 
                 val isHostLinked = !linkedHostUid.isNullOrEmpty()
@@ -963,6 +1135,16 @@ fun ClientHomeScreen(
                                     enabled = !isConnecting,
                                     modifier = Modifier.fillMaxWidth()
                                 )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                androidx.compose.material3.OutlinedTextField(
+                                    value = newHostPhoneInput,
+                                    onValueChange = { newHostPhoneInput = it },
+                                    label = { Text("Host Mobile (Optional - for SMS fallback)") },
+                                    placeholder = { Text("e.g. +91 9876543210") },
+                                    singleLine = true,
+                                    enabled = !isConnecting,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
                         },
                         confirmButton = {
@@ -971,7 +1153,7 @@ fun ClientHomeScreen(
                                     val clean = newHostCodeInput.trim().uppercase()
                                     if (clean.isNotBlank()) {
                                         isConnecting = true
-                                        viewModel.updateLinkedHostCode(clean) { success, msg ->
+                                        viewModel.updateLinkedHostCode(clean, newHostPhoneInput.ifBlank { null }) { success, msg ->
                                             isConnecting = false
                                             showChangeDialog = false
                                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
@@ -1081,6 +1263,407 @@ fun ClientHomeScreen(
                             ),
                             modifier = Modifier.testTag("service_toggle_switch")
                         )
+                    }
+                }
+            }
+
+            // 1.5 Offline Cellular SMS Fallback Card (Smart Hybrid / Jio 100 Quota)
+            item {
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isOfflineSmsFallbackEnabled) Color(0xFFF0FDF4) else Color(0xFFF8FAFC)
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isOfflineSmsFallbackEnabled) Color(0xFF86EFAC) else Color(0xFFE2E8F0)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp)
+                    ) {
+                        // Header: Title + Toggle Switch
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .background(
+                                            color = if (isOfflineSmsFallbackEnabled) Color(0xFF16A34A) else Color(0xFF94A3B8),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SimCard,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "Offline SMS Fallback",
+                                            fontSize = 15.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isOfflineSmsFallbackEnabled) Color(0xFF14532D) else Color(0xFF334155)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isOfflineSmsFallbackEnabled) Color(0xFFDCFCE7) else Color(0xFFE2E8F0)
+                                        ) {
+                                            Text(
+                                                text = "HYBRID",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isOfflineSmsFallbackEnabled) Color(0xFF15803D) else Color(0xFF64748B),
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = if (isOfflineSmsFallbackEnabled)
+                                            "Forwards via SIM SMS when offline"
+                                        else
+                                            "Offline SMS fallback paused",
+                                        fontSize = 12.sp,
+                                        color = if (isOfflineSmsFallbackEnabled) Color(0xFF15803D) else Color(0xFF64748B)
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = isOfflineSmsFallbackEnabled,
+                                onCheckedChange = { checked ->
+                                    if (checked) {
+                                        if (!hasSendSmsPermission) {
+                                            sendSmsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                                        } else {
+                                            viewModel.setOfflineSmsFallbackEnabled(true)
+                                        }
+                                    } else {
+                                        viewModel.setOfflineSmsFallbackEnabled(false)
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF16A34A)
+                                )
+                            )
+                        }
+
+                        AnimatedVisibility(visible = isOfflineSmsFallbackEnabled) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                                HorizontalDivider(color = Color(0xFFBBF7D0))
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // Destination Number Display & Change
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "FORWARDING TO MOBILE NUMBER",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF64748B),
+                                                letterSpacing = 0.5.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = if (fallbackDestinationNumber.isNotBlank())
+                                                    fallbackDestinationNumber
+                                                else
+                                                    "Not Configured (Required)",
+                                                fontSize = 14.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (fallbackDestinationNumber.isNotBlank())
+                                                    Color(0xFF0F172A)
+                                                else
+                                                    Color(0xFFDC2626)
+                                            )
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = { showDestinationNumberDialog = true },
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = if (fallbackDestinationNumber.isNotBlank()) "Edit" else "Set",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // SIM Card Selector & Detection
+                                Text(
+                                    text = "SELECT SENDING SIM (RECEIVER DEVICE)",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF14532D),
+                                    letterSpacing = 0.5.sp
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val sim1 = availableSims.find { it.slotIndex == 0 } ?: availableSims.firstOrNull()
+                                    val sim2 = availableSims.find { it.slotIndex == 1 }
+
+                                    // Option 0: Auto (SIM 1 with Smart Rollover)
+                                    val isAutoSelected = preferredSimSlot == 0
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isAutoSelected) Color(0xFF16A34A) else Color.White,
+                                        border = BorderStroke(1.dp, if (isAutoSelected) Color(0xFF16A34A) else Color(0xFFCBD5E1)),
+                                        modifier = Modifier.clickable { viewModel.setPreferredSimSlot(0) }
+                                    ) {
+                                        Text(
+                                            text = "Auto (Smart Fallback)",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (isAutoSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isAutoSelected) Color.White else Color(0xFF334155),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                                        )
+                                    }
+
+                                    // Option 1: Force SIM 1
+                                    val isSim1Selected = preferredSimSlot == 1
+                                    val sim1Label = "SIM 1: ${sim1?.displayName ?: "SIM 1"}"
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSim1Selected) Color(0xFF16A34A) else Color.White,
+                                        border = BorderStroke(1.dp, if (isSim1Selected) Color(0xFF16A34A) else Color(0xFFCBD5E1)),
+                                        modifier = Modifier.clickable { viewModel.setPreferredSimSlot(1) }
+                                    ) {
+                                        Text(
+                                            text = sim1Label,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (isSim1Selected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSim1Selected) Color.White else Color(0xFF334155),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                                        )
+                                    }
+
+                                    // Option 2: Force SIM 2 (if present)
+                                    if (sim2 != null) {
+                                        val isSim2Selected = preferredSimSlot == 2
+                                        val sim2Label = "SIM 2: ${sim2.displayName}"
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSim2Selected) Color(0xFF16A34A) else Color.White,
+                                            border = BorderStroke(1.dp, if (isSim2Selected) Color(0xFF16A34A) else Color(0xFFCBD5E1)),
+                                            modifier = Modifier.clickable { viewModel.setPreferredSimSlot(2) }
+                                        ) {
+                                            Text(
+                                                text = sim2Label,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = if (isSim2Selected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSim2Selected) Color.White else Color(0xFF334155),
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // Daily Quota Tracking (Jio 100 Free SMS Plan)
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color.White,
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "DAILY FREE SMS QUOTA TRACKER",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF64748B),
+                                                letterSpacing = 0.5.sp
+                                            )
+
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color(0xFFF1F5F9)
+                                            ) {
+                                                Text(
+                                                    text = "Resets 00:00 midnight",
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color(0xFF64748B),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        // SIM 1 Usage Bar
+                                        val sim1Progress = (dailySmsSentCountSim1.toFloat() / dailySmsLimitSim1.toFloat()).coerceIn(0f, 1f)
+                                        val isSim1Exhausted = dailySmsSentCountSim1 >= dailySmsLimitSim1
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "SIM 1 Usage",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color(0xFF334155)
+                                            )
+                                            Text(
+                                                text = "$dailySmsSentCountSim1 / $dailySmsLimitSim1 SMS" + if (isSim1Exhausted) " (EXHAUSTED)" else "",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSim1Exhausted) Color(0xFFDC2626) else Color(0xFF16A34A)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        LinearProgressIndicator(
+                                            progress = { sim1Progress },
+                                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                            color = if (isSim1Exhausted) Color(0xFFDC2626) else if (sim1Progress > 0.8f) Color(0xFFF59E0B) else Color(0xFF16A34A),
+                                            trackColor = Color(0xFFE2E8F0)
+                                        )
+
+                                        // SIM 2 Usage Bar (if available)
+                                        val hasSim2 = availableSims.any { it.slotIndex == 1 }
+                                        if (hasSim2) {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            val sim2Progress = (dailySmsSentCountSim2.toFloat() / dailySmsLimitSim2.toFloat()).coerceIn(0f, 1f)
+                                            val isSim2Exhausted = dailySmsSentCountSim2 >= dailySmsLimitSim2
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = "SIM 2 Usage",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color(0xFF334155)
+                                                )
+                                                Text(
+                                                    text = "$dailySmsSentCountSim2 / $dailySmsLimitSim2 SMS" + if (isSim2Exhausted) " (EXHAUSTED)" else "",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSim2Exhausted) Color(0xFFDC2626) else Color(0xFF16A34A)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            LinearProgressIndicator(
+                                                progress = { sim2Progress },
+                                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                                color = if (isSim2Exhausted) Color(0xFFDC2626) else if (sim2Progress > 0.8f) Color(0xFFF59E0B) else Color(0xFF16A34A),
+                                                trackColor = Color(0xFFE2E8F0)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        // Dual SIM Rollover Badge & Customize Button
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = if (isDualSimRolloverEnabled) Color(0xFF16A34A) else Color(0xFF94A3B8),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = if (isDualSimRolloverEnabled)
+                                                        "Dual-SIM Rollover: Active"
+                                                    else
+                                                        "Dual-SIM Rollover: Off",
+                                                    fontSize = 11.sp,
+                                                    color = if (isDualSimRolloverEnabled) Color(0xFF15803D) else Color(0xFF64748B),
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+
+                                            FilledTonalButton(
+                                                onClick = { showQuotaSettingsDialog = true },
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                modifier = Modifier.height(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Settings,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Limits & Rollover", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Hybrid Note
+                                Text(
+                                    text = "💡 Hybrid Mode sends over Firebase internet first. If offline, SMS fallback sends to Host without extra recharge cost within daily 100 free SMS limits.",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF166534),
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
                     }
                 }
             }
