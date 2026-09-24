@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -152,6 +153,22 @@ class ClientViewModel(
 
     fun setDualSimRolloverEnabled(enabled: Boolean) {
         viewModelScope.launch { prefs.setDualSimRolloverEnabled(enabled) }
+    }
+
+    fun sendTestFallbackSms(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val destination = prefs.fallbackDestinationNumberFlow.firstOrNull()?.trim() ?: ""
+            if (destination.isBlank()) {
+                onResult(false, "Please configure destination mobile number first.")
+                return@launch
+            }
+            val success = smsRepository.trySendOfflineCellularFallback("TEST-SMS", "SMS Bridge offline cellular fallback test message. Forwarding is active!")
+            if (success) {
+                onResult(true, "Test SMS sent successfully to $destination!")
+            } else {
+                onResult(false, "Failed to send test SMS. Check SEND_SMS permission or SIM balance.")
+            }
+        }
     }
 
     fun syncRealInbox(

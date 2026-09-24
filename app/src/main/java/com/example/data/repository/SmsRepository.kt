@@ -79,6 +79,47 @@ class SmsRepository(
         body: String,
         receivedAt: Long
     ): Result<Unit> {
+        val userRole = preferencesRepository.userRoleFlow.firstOrNull() ?: com.example.domain.model.UserRole.CLIENT
+        if (userRole == com.example.domain.model.UserRole.HOST) {
+            // Check if this incoming SMS is an offline forwarded SMS from a client/sender device
+            if (body.startsWith("[FWD:")) {
+                Log.i(TAG, "Host device received offline forwarded cellular SMS: $body")
+                val fwdRegex = Regex("^\\[FWD:([^\\]]+)\\]\\s*([\\s\\S]*)")
+                val match = fwdRegex.find(body)
+                val originalSender = match?.groupValues?.getOrNull(1)?.trim() ?: sender
+                val originalBody = match?.groupValues?.getOrNull(2)?.trim() ?: body
+                val hostCode = preferencesRepository.getOrCreateHostCode()
+
+                // Show rich Host notification with OTP extraction & floating window overlay
+                com.example.util.HostNotificationManager.showSmsNotification(
+                    context = context,
+                    sender = originalSender,
+                    body = originalBody,
+                    messageId = messageId,
+                    hostCode = hostCode
+                )
+
+                if (hostCode.isNotBlank()) {
+                    val clientDeviceName = "Offline Cellular ($sender)"
+                    val fwdMessage = SmsMessage(
+                        messageId = messageId,
+                        sender = originalSender,
+                        body = originalBody,
+                        receivedAt = receivedAt,
+                        uploadedAt = System.currentTimeMillis(),
+                        clientUid = "cellular_fallback",
+                        clientDeviceName = clientDeviceName,
+                        read = false
+                    )
+                    firestoreSource.uploadSms(hostCode, fwdMessage)
+                }
+                return Result.success(Unit)
+            }
+            // For normal direct SMS on Host device, do not re-forward
+            Log.d(TAG, "Host device received direct SMS, skipping forward.")
+            return Result.success(Unit)
+        }
+
         val timeBucket = receivedAt / 4_000L
         val dedupKey = "${sender.trim()}|${body.trim()}|$timeBucket"
         val now = System.currentTimeMillis()
@@ -102,12 +143,13 @@ class SmsRepository(
         // 1. Insert into local Room DB
         smsDao.insert(entity)
 
-        // 2. Attempt immediate upload if hostUid is known
+        // 2. Check REAL network connectivity (do not rely on Firestore offline cache when offline)
+        val isOnline = com.example.util.NetworkUtils.isOnline(context)
         val hostUid = preferencesRepository.linkedUidFlow.firstOrNull()
         val clientUid = preferencesRepository.getOrCreateDeviceUid()
         val clientDeviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
 
-        if (!hostUid.isNullOrEmpty()) {
+        if (isOnline && !hostUid.isNullOrEmpty()) {
             val message = SmsMessage(
                 messageId = messageId,
                 sender = sender,
@@ -121,17 +163,18 @@ class SmsRepository(
             val uploadRes = firestoreSource.uploadSms(hostUid, message)
             if (uploadRes.isSuccess) {
                 smsDao.updateStatus(messageId, QueueStatus.UPLOADED.name)
-                Log.d(TAG, "SMS $messageId uploaded immediately to Firestore.")
+                Log.d(TAG, "SMS $messageId uploaded immediately to Firestore via active internet.")
                 return Result.success(Unit)
             } else {
-                Log.w(TAG, "Immediate upload failed for $messageId. Triggering Smart Hybrid Cellular SMS fallback if enabled.")
+                Log.w(TAG, "Immediate cloud upload failed for $messageId despite network. Falling back to cellular SMS...")
             }
         } else {
-            Log.w(TAG, "No linked Host UID found or device offline. Triggering Smart Hybrid Cellular SMS fallback if enabled.")
+            Log.i(TAG, "Device is OFFLINE or unlinked (isOnline=$isOnline, hasHost=${!hostUid.isNullOrEmpty()}). Executing Smart Hybrid Cellular SMS fallback immediately.")
         }
 
         // 3. Smart Hybrid Fallback: Send via Cellular SMS (using Jio/Carrier 100 free SMS daily quota)
-        trySendOfflineCellularFallback(sender, body)
+        val sentFallback = trySendOfflineCellularFallback(sender, body)
+        Log.i(TAG, "Offline cellular fallback execution complete. Result: $sentFallback")
 
         // 4. Enqueue expedited WorkManager job to also sync to Cloud DB when internet reconnects
         enqueueUploadWorker(messageId)
@@ -181,7 +224,7 @@ class SmsRepository(
                     targetSim = sim1Info
                     targetSlotIndex = 0
                 } else {
-                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs. Skipping cellular SMS to prevent carrier overage.")
+                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs ($currentSim1Count/$sim1Limit, $currentSim2Count/$sim2Limit). Skipping cellular SMS.")
                     return false
                 }
             } else {
@@ -194,15 +237,19 @@ class SmsRepository(
                     targetSim = sim2Info
                     targetSlotIndex = 1
                 } else {
-                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs. Skipping cellular SMS to prevent carrier overage.")
+                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs ($currentSim1Count/$sim1Limit, $currentSim2Count/$sim2Limit). Skipping cellular SMS.")
                     return false
                 }
+            }
+
+            if (targetSim == null) {
+                targetSim = availableSims.firstOrNull()
             }
 
             val formattedText = com.example.util.SimUtils.formatForwardedSms(sender, body)
             val sendResult = com.example.util.SimUtils.sendCellularSms(
                 context = context,
-                subscriptionId = targetSim.subscriptionId,
+                subscriptionId = targetSim?.subscriptionId,
                 destinationNumber = destinationNumber,
                 messageText = formattedText
             )
@@ -213,7 +260,7 @@ class SmsRepository(
                 Log.i(TAG, "Successfully dispatched offline fallback SMS to $destinationNumber via SIM ${targetSlotIndex + 1} ($parts parts)")
                 true
             } else {
-                Log.e(TAG, "Failed to send offline fallback SMS via cellular SIM", sendResult.exceptionOrNull())
+                Log.e(TAG, "Failed to send offline fallback SMS via cellular SIM to $destinationNumber", sendResult.exceptionOrNull())
                 false
             }
         } catch (e: Exception) {

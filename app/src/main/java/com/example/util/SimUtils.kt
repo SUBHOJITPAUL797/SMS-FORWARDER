@@ -35,8 +35,18 @@ object SimUtils {
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!hasPermission) {
-            Log.w(TAG, "READ_PHONE_STATE permission not granted, cannot enumerate SIMs")
-            return emptyList()
+            Log.w(TAG, "READ_PHONE_STATE permission not granted; falling back to default SIM slot")
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            val opName = tm?.networkOperatorName?.ifBlank { null } ?: "Default SIM"
+            return listOf(
+                SimSlotInfo(
+                    slotIndex = 0,
+                    subscriptionId = -1,
+                    displayName = opName,
+                    carrierName = opName,
+                    phoneNumber = null
+                )
+            )
         }
 
         try {
@@ -76,7 +86,7 @@ object SimUtils {
 
         // Single SIM fallback if SubscriptionManager returns empty
         val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-        val opName = tm?.networkOperatorName?.ifBlank { null } ?: "SIM 1"
+        val opName = tm?.networkOperatorName?.ifBlank { null } ?: "Default SIM"
         return listOf(
             SimSlotInfo(
                 slotIndex = 0,
@@ -86,6 +96,33 @@ object SimUtils {
                 phoneNumber = null
             )
         )
+    }
+
+    /**
+     * Resolves the appropriate SmsManager safely across Android versions and OEMs.
+     */
+    private fun getSmsManager(context: Context, subscriptionId: Int?): SmsManager {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val base = context.getSystemService(SmsManager::class.java) 
+                    ?: @Suppress("DEPRECATION") SmsManager.getDefault()
+                if (subscriptionId != null && subscriptionId > 0) {
+                    base.createForSubscriptionId(subscriptionId)
+                } else {
+                    base
+                }
+            } else if (subscriptionId != null && subscriptionId > 0) {
+                @Suppress("DEPRECATION")
+                SmsManager.getSmsManagerForSubscriptionId(subscriptionId)
+            } else {
+                @Suppress("DEPRECATION")
+                SmsManager.getDefault()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed resolving SmsManager for subId $subscriptionId, using default SmsManager", e)
+            @Suppress("DEPRECATION")
+            SmsManager.getDefault()
+        }
     }
 
     /**
@@ -103,10 +140,12 @@ object SimUtils {
     ): Result<Int> {
         val cleanNumber = destinationNumber.filter { it.isDigit() || it == '+' }.trim()
         if (cleanNumber.length < 5) {
+            Log.e(TAG, "Invalid destination phone number: '$destinationNumber' (cleaned: '$cleanNumber')")
             return Result.failure(IllegalArgumentException("Invalid destination phone number: $destinationNumber"))
         }
 
         if (messageText.isBlank()) {
+            Log.e(TAG, "SMS text is empty")
             return Result.failure(IllegalArgumentException("SMS text is empty"))
         }
 
@@ -116,25 +155,12 @@ object SimUtils {
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!hasSendPermission) {
+            Log.e(TAG, "CRITICAL: SEND_SMS permission NOT granted! Cellular SMS dispatch aborted.")
             return Result.failure(SecurityException("SEND_SMS permission not granted"))
         }
 
         return try {
-            val smsManager: SmsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (subscriptionId != null && subscriptionId != -1) {
-                    context.getSystemService(SmsManager::class.java).createForSubscriptionId(subscriptionId)
-                } else {
-                    context.getSystemService(SmsManager::class.java)
-                }
-            } else {
-                @Suppress("DEPRECATION")
-                if (subscriptionId != null && subscriptionId != -1) {
-                    SmsManager.getSmsManagerForSubscriptionId(subscriptionId)
-                } else {
-                    SmsManager.getDefault()
-                }
-            }
-
+            val smsManager = getSmsManager(context, subscriptionId)
             val parts = smsManager.divideMessage(messageText)
             if (parts.size > 1) {
                 smsManager.sendMultipartTextMessage(cleanNumber, null, parts, null, null)

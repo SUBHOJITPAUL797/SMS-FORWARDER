@@ -397,6 +397,26 @@ fun ClientHomeScreen(
         )
     }
 
+    // SEND_SMS permission state and launcher for offline fallback
+    var hasSendSmsPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val sendSmsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasSendSmsPermission = isGranted
+        if (isGranted) {
+            viewModel.setOfflineSmsFallbackEnabled(true)
+            Toast.makeText(context, "SEND_SMS permission granted! Offline fallback enabled.", Toast.LENGTH_SHORT).show()
+        } else {
+            viewModel.setOfflineSmsFallbackEnabled(false)
+            Toast.makeText(context, "SEND_SMS permission required for offline cellular fallback.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     // Fallback Destination Mobile Number Dialog
     if (showDestinationNumberDialog) {
         var tempNumber by remember(fallbackDestinationNumber) { mutableStateOf(fallbackDestinationNumber) }
@@ -429,9 +449,13 @@ fun ClientHomeScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    viewModel.setFallbackDestinationNumber(tempNumber.trim())
+                    val cleanNum = tempNumber.trim()
+                    viewModel.setFallbackDestinationNumber(cleanNum)
                     showDestinationNumberDialog = false
                     Toast.makeText(context, "Fallback number updated!", Toast.LENGTH_SHORT).show()
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                        sendSmsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                    }
                 }) {
                     Text("Save")
                 }
@@ -525,27 +549,8 @@ fun ClientHomeScreen(
     }
 
     // Permission states
-    var hasSendSmsPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    val sendSmsPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasSendSmsPermission = isGranted
-        if (isGranted) {
-            viewModel.setOfflineSmsFallbackEnabled(true)
-            Toast.makeText(context, "SEND_SMS permission granted! Offline fallback enabled.", Toast.LENGTH_SHORT).show()
-        } else {
-            viewModel.setOfflineSmsFallbackEnabled(false)
-            Toast.makeText(context, "SEND_SMS permission required for offline cellular fallback.", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    val availableSims = remember(context) {
-        com.example.util.SimUtils.getAvailableSims(context)
+    var availableSims by remember {
+        mutableStateOf(com.example.util.SimUtils.getAvailableSims(context))
     }
 
     var hasSmsPermission by remember {
@@ -606,6 +611,8 @@ fun ClientHomeScreen(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
         hasSmsPermission = (perms[Manifest.permission.RECEIVE_SMS] == true) && (perms[Manifest.permission.READ_SMS] == true)
+        hasSendSmsPermission = perms[Manifest.permission.SEND_SMS] == true ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             hasNotificationPermission = perms[Manifest.permission.POST_NOTIFICATIONS] == true
         }
@@ -630,6 +637,7 @@ fun ClientHomeScreen(
         val perms = mutableListOf(
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_SMS,
+            Manifest.permission.SEND_SMS,
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.READ_CALL_LOG,
             Manifest.permission.READ_CONTACTS
@@ -646,6 +654,8 @@ fun ClientHomeScreen(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 hasSmsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED &&
                         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+                hasSendSmsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
+                availableSims = com.example.util.SimUtils.getAvailableSims(context)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     hasNotificationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
                 }
@@ -1425,6 +1435,74 @@ fun ClientHomeScreen(
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
+                                    }
+                                }
+
+                                if (!hasSendSmsPermission) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFFEF2F2),
+                                        border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                        modifier = Modifier.fillMaxWidth().clickable {
+                                            sendSmsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Warning,
+                                                contentDescription = null,
+                                                tint = Color(0xFFDC2626),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "SMS Permission Required",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF991B1B)
+                                                )
+                                                Text(
+                                                    text = "Android requires 'SEND_SMS' permission to forward offline cellular messages. Tap here to grant.",
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFFB91C1C)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Send Test SMS Button
+                                Spacer(modifier = Modifier.height(10.dp))
+                                var isSendingTestSms by remember { mutableStateOf(false) }
+                                OutlinedButton(
+                                    onClick = {
+                                        if (!hasSendSmsPermission) {
+                                            sendSmsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                                            return@OutlinedButton
+                                        }
+                                        isSendingTestSms = true
+                                        viewModel.sendTestFallbackSms { success, msg ->
+                                            isSendingTestSms = false
+                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    enabled = fallbackDestinationNumber.isNotBlank() && !isSendingTestSms,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    if (isSendingTestSms) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Sending Test SMS...", fontSize = 12.sp)
+                                    } else {
+                                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Send Test SMS to Verify", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
 
