@@ -109,12 +109,13 @@ class CallRepository(
         // 1. Insert into local Room DB
         callDao.insert(entity)
 
-        // 2. Attempt immediate upload if hostUid is known
+        // 2. Check REAL network connectivity (do not rely on Firestore offline cache when offline)
+        val isOnline = com.example.util.NetworkUtils.isOnline(context)
         val hostUid = preferencesRepository.linkedUidFlow.firstOrNull()
         val clientUid = preferencesRepository.getOrCreateDeviceUid()
         val clientDeviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
 
-        if (!hostUid.isNullOrEmpty()) {
+        if (isOnline && !hostUid.isNullOrEmpty()) {
             val record = CallRecord(
                 callId = callId,
                 phoneNumber = phoneNumber,
@@ -132,17 +133,131 @@ class CallRepository(
             val uploadResult = firestoreSource.uploadCall(hostUid, record)
             if (uploadResult.isSuccess) {
                 callDao.updateStatus(callId, QueueStatus.UPLOADED.name)
-                Log.i(TAG, "Call $callId successfully uploaded to Host $hostUid")
+                Log.i(TAG, "Call $callId ($callType) successfully uploaded to Host $hostUid via active internet")
+                return Result.success(Unit)
             } else {
-                Log.w(TAG, "Failed to upload call immediately, remains PENDING in queue; scheduling worker", uploadResult.exceptionOrNull())
-                enqueueUploadWorker(callId)
+                Log.w(TAG, "Immediate cloud upload failed for Call $callId despite active network. Falling back to cellular SMS...")
             }
         } else {
-            Log.w(TAG, "No linked Host UID found. Call stored in queue; scheduling worker.")
-            enqueueUploadWorker(callId)
+            Log.i(TAG, "Device is OFFLINE or unlinked (isOnline=$isOnline, hasHost=${!hostUid.isNullOrEmpty()}). Executing Smart Hybrid Cellular SMS fallback for Call $callId ($callType)...")
         }
 
+        // 3. Smart Hybrid Fallback: Send via Cellular SMS (using SIM quota)
+        val sentFallback = trySendOfflineCellularCallFallback(
+            phoneNumber = phoneNumber,
+            contactName = contactName,
+            callType = callType,
+            durationSeconds = durationSeconds
+        )
+        Log.i(TAG, "Offline cellular call fallback execution complete for $callId. Result: $sentFallback")
+
+        // 4. Enqueue expedited WorkManager job to also sync to Cloud DB when internet reconnects
+        enqueueUploadWorker(callId)
+
         return Result.success(Unit)
+    }
+
+    /**
+     * Sends an offline cellular SMS fallback to the host phone when data/internet is disconnected.
+     */
+    private suspend fun trySendOfflineCellularCallFallback(
+        phoneNumber: String,
+        contactName: String,
+        callType: CallType,
+        durationSeconds: Int
+    ): Boolean {
+        try {
+            val isFallbackEnabled = preferencesRepository.isOfflineSmsFallbackEnabledFlow.firstOrNull() ?: true
+            if (!isFallbackEnabled) {
+                Log.d(TAG, "Offline cellular fallback is toggled OFF by user in settings. Skipping SMS fallback for call.")
+                return false
+            }
+
+            var destinationNumber = preferencesRepository.fallbackDestinationNumberFlow.firstOrNull()?.trim() ?: ""
+            if (destinationNumber.isBlank()) {
+                destinationNumber = preferencesRepository.hostPhoneNumberFlow.firstOrNull()?.trim() ?: ""
+            }
+
+            if (destinationNumber.isBlank()) {
+                Log.w(TAG, "No fallback destination phone number or host phone number configured. Cannot dispatch cellular SMS.")
+                return false
+            }
+
+            // Check and reset daily SMS quota
+            preferencesRepository.checkAndResetDailyQuota()
+
+            val currentSim1Count = preferencesRepository.dailySmsSentCountSim1Flow.firstOrNull() ?: 0
+            val currentSim2Count = preferencesRepository.dailySmsSentCountSim2Flow.firstOrNull() ?: 0
+            val sim1Limit = preferencesRepository.dailySmsLimitSim1Flow.firstOrNull() ?: 100
+            val sim2Limit = preferencesRepository.dailySmsLimitSim2Flow.firstOrNull() ?: 100
+            val preferredSlot = preferencesRepository.preferredSimSlotFlow.firstOrNull() ?: 0
+            val isRolloverEnabled = preferencesRepository.isDualSimRolloverEnabledFlow.firstOrNull() ?: true
+
+            val availableSims = com.example.util.SimUtils.getAvailableSims(context)
+            if (availableSims.isEmpty()) {
+                Log.w(TAG, "No active SIM card found on device to send offline call alert SMS.")
+                return false
+            }
+
+            val sim1Info = availableSims.find { it.slotIndex == 0 } ?: availableSims.firstOrNull()
+            val sim2Info = availableSims.find { it.slotIndex == 1 }
+
+            var targetSim: com.example.util.SimSlotInfo? = null
+            var targetSlotIndex = 0
+
+            if (preferredSlot == 2 && sim2Info != null) {
+                if (currentSim2Count < sim2Limit) {
+                    targetSim = sim2Info
+                    targetSlotIndex = 1
+                } else if (isRolloverEnabled && sim1Info != null && currentSim1Count < sim1Limit) {
+                    Log.i(TAG, "SIM 2 quota exhausted ($currentSim2Count/$sim2Limit). Rolling over to SIM 1 ($currentSim1Count/$sim1Limit).")
+                    targetSim = sim1Info
+                    targetSlotIndex = 0
+                } else {
+                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs. Skipping cellular call alert.")
+                    return false
+                }
+            } else {
+                if (sim1Info != null && currentSim1Count < sim1Limit) {
+                    targetSim = sim1Info
+                    targetSlotIndex = 0
+                } else if (isRolloverEnabled && sim2Info != null && currentSim2Count < sim2Limit) {
+                    Log.i(TAG, "SIM 1 quota exhausted ($currentSim1Count/$sim1Limit). Rolling over to SIM 2 ($currentSim2Count/$sim2Limit).")
+                    targetSim = sim2Info
+                    targetSlotIndex = 1
+                } else {
+                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs. Skipping cellular call alert.")
+                    return false
+                }
+            }
+
+            val formattedText = com.example.util.SimUtils.formatForwardedCall(
+                caller = phoneNumber,
+                contactName = contactName,
+                callType = callType,
+                durationSeconds = durationSeconds
+            )
+
+            val sendResult = com.example.util.SimUtils.sendCellularSms(
+                context = context,
+                subscriptionId = targetSim?.subscriptionId,
+                destinationNumber = destinationNumber,
+                messageText = formattedText
+            )
+
+            return if (sendResult.isSuccess) {
+                val parts = sendResult.getOrNull() ?: 1
+                preferencesRepository.incrementSmsSentCount(targetSlotIndex, parts)
+                Log.i(TAG, "Successfully dispatched offline call alert SMS to $destinationNumber via SIM ${targetSlotIndex + 1} ($parts parts)")
+                true
+            } else {
+                Log.e(TAG, "Failed to send offline call alert SMS via cellular SIM to $destinationNumber", sendResult.exceptionOrNull())
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error in trySendOfflineCellularCallFallback", e)
+            return false
+        }
     }
 
     suspend fun syncAllPendingCalls(): Int {

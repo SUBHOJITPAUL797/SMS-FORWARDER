@@ -1,6 +1,7 @@
 package com.example.domain.model
 
 enum class CallType(val displayName: String) {
+    RINGING("Ringing"),
     MISSED("Missed"),
     INCOMING("Received"),
     OUTGOING("Outgoing"),
@@ -46,6 +47,7 @@ data class CallRecord(
 
     fun formattedDuration(): String {
         return when {
+            callType == CallType.RINGING -> "Ringing..."
             callType == CallType.MISSED -> "Missed (0s)"
             callType == CallType.REJECTED -> "Rejected (0s)"
             durationSeconds <= 0 -> "0s"

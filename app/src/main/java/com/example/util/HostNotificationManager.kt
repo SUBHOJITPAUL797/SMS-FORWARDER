@@ -240,7 +240,7 @@ object HostNotificationManager {
         val durationStr = callRecord.formattedDuration()
         val cleanCallId = callRecord.callId.ifBlank { "${phoneNumber}_${callRecord.timestamp}" }
 
-        val dedupKey = "call|$cleanCallId|${callRecord.timestamp / 4_000L}"
+        val dedupKey = "call|$cleanCallId|${callType.name}|${callRecord.timestamp / 4_000L}"
         val now = System.currentTimeMillis()
         val lastSeen = recentNotifications[dedupKey]
         if (lastSeen != null && (now - lastSeen) < 15_000L) {
@@ -254,6 +254,7 @@ object HostNotificationManager {
         val hasContactName = callRecord.contactName.isNotBlank() && !callRecord.contactName.equals(phoneNumber, ignoreCase = true)
 
         val typeEmoji = when (callType) {
+            CallType.RINGING -> "📞 Incoming Call (Ringing...)"
             CallType.MISSED -> "📵 Missed Call"
             CallType.INCOMING -> "📞 Received Call"
             CallType.OUTGOING -> "📲 Outgoing Call"
@@ -335,7 +336,12 @@ object HostNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val defaultSoundUri = if (callType == CallType.RINGING) {
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        } else {
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        }
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             ?: return
 
@@ -349,8 +355,8 @@ object HostNotificationManager {
                     .setSummaryText(if (callRecord.clientDeviceName.isNotBlank()) callRecord.clientDeviceName else "Forwarded Call")
                     .bigText(bigText)
             )
-            .setColor(0xFF0284C7.toInt())
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setColor(if (callType == CallType.RINGING) 0xFF2563EB.toInt() else 0xFF0284C7.toInt())
+            .setPriority(if (callType == CallType.RINGING) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setAutoCancel(true)
             .setSound(defaultSoundUri)

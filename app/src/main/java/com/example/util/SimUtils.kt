@@ -10,6 +10,7 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.example.domain.model.CallType
 
 data class SimSlotInfo(
     val slotIndex: Int,          // 0 = SIM 1, 1 = SIM 2
@@ -190,6 +191,27 @@ object SimUtils {
         } else {
             // For longer messages, still send full text; SmsManager will divide into 2 parts
             "$header$cleanBody"
+        }
+    }
+
+    /**
+     * Compacts the call event into a concise cellular SMS notification for offline fallback.
+     */
+    fun formatForwardedCall(caller: String, contactName: String, callType: CallType, durationSeconds: Int = 0): String {
+        val nameOrNum = if (contactName.isNotBlank() && !contactName.equals(caller, ignoreCase = true)) {
+            "${contactName.take(16)} ($caller)"
+        } else {
+            caller
+        }
+        return when (callType) {
+            CallType.RINGING -> "[CALL ALERT] 📞 Incoming call from: $nameOrNum (Ringing now)"
+            CallType.MISSED -> "[CALL ALERT] 📵 Missed call from: $nameOrNum"
+            CallType.INCOMING -> {
+                val dur = if (durationSeconds > 0) " (${durationSeconds}s)" else ""
+                "[CALL ALERT] 📞 Answered call with: $nameOrNum$dur"
+            }
+            CallType.REJECTED -> "[CALL ALERT] 🚫 Declined call from: $nameOrNum"
+            CallType.OUTGOING -> "[CALL ALERT] 📲 Outgoing call to: $nameOrNum"
         }
     }
 }

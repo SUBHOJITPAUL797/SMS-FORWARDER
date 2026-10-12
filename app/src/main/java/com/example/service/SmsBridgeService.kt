@@ -120,21 +120,38 @@ class SmsBridgeService : Service() {
                             // 2. Calls Listener
                             launch {
                                 var initialCallsLoadComplete = false
-                                val knownCallIds = mutableSetOf<String>()
+                                val knownCallEvents = mutableSetOf<String>()
 
                                 app.callRepository.observeHostCallList(hostCode).collect { calls ->
+                                    val now = System.currentTimeMillis()
                                     if (!initialCallsLoadComplete) {
-                                        calls.forEach { knownCallIds.add(it.callId) }
+                                        for (call in calls) {
+                                            val eventKey = "${call.callId}_${call.callType.name}"
+                                            val isVeryRecent = (call.uploadedAt > 0 && Math.abs(now - call.uploadedAt) < 60_000L) ||
+                                                    Math.abs(now - call.timestamp) < 60_000L
+                                            if (isVeryRecent && !call.read) {
+                                                // If an unread call arrived right as the service was starting, do not drop it!
+                                                knownCallEvents.add(eventKey)
+                                                Log.i(TAG, "Recent unread call notified on Host startup: ${call.callId} (${call.callType}, ${call.phoneNumber})")
+                                                com.example.util.HostNotificationManager.showCallNotification(
+                                                    context = this@SmsBridgeService,
+                                                    callRecord = call,
+                                                    hostCode = hostCode
+                                                )
+                                            } else {
+                                                knownCallEvents.add(eventKey)
+                                            }
+                                        }
                                         initialCallsLoadComplete = true
                                         Log.d(TAG, "Host call listener initialized with ${calls.size} existing calls.")
                                     } else {
-                                        val now = System.currentTimeMillis()
                                         for (call in calls) {
-                                            if (knownCallIds.add(call.callId)) {
+                                            val eventKey = "${call.callId}_${call.callType.name}"
+                                            if (knownCallEvents.add(eventKey)) {
                                                 val isRecent = Math.abs(now - call.timestamp) < 15 * 60 * 1000L ||
                                                         (call.uploadedAt > 0 && Math.abs(now - call.uploadedAt) < 2 * 60 * 1000L)
                                                 if (isRecent && !call.read) {
-                                                    Log.i(TAG, "New call event detected on Host: ${call.callId} (${call.callType}, ${call.phoneNumber})")
+                                                    Log.i(TAG, "Call event detected on Host: ${call.callId} (${call.callType}, ${call.phoneNumber})")
                                                     com.example.util.HostNotificationManager.showCallNotification(
                                                         context = this@SmsBridgeService,
                                                         callRecord = call,

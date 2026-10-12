@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
-import android.os.Build
+import android.os.PowerManager
 import android.provider.CallLog
 import android.telephony.TelephonyManager
 import android.util.Log
@@ -16,14 +16,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 class PhoneCallReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "PhoneCallReceiver"
 
-        // Track state across broadcasts
+        private const val PREFS_NAME = "phone_call_receiver_state"
+        private const val KEY_SAVED_NUMBER = "saved_number"
+        private const val KEY_START_TIME = "call_start_time"
+        private const val KEY_OFFHOOK_TIME = "call_offhook_time"
+        private const val KEY_IS_INCOMING = "is_incoming"
+        private const val KEY_WAS_ANSWERED = "was_answered"
+        private const val KEY_RINGING_CALL_ID = "ringing_call_id"
+
+        // In-memory fallback
         private var lastState = TelephonyManager.EXTRA_STATE_IDLE
         private var callStartTime: Long = 0L
         private var isIncoming: Boolean = false
@@ -34,30 +41,57 @@ class PhoneCallReceiver : BroadcastReceiver() {
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
 
         val stateStr = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: return
-        val incomingNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+        val incomingNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)?.trim()
 
         Log.d(TAG, "Phone state changed: $stateStr, number: ${incomingNumber ?: "[hidden]"}")
 
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
         if (!incomingNumber.isNullOrBlank()) {
             savedNumber = incomingNumber
+            prefs.edit().putString(KEY_SAVED_NUMBER, incomingNumber).apply()
         }
 
         when (stateStr) {
             TelephonyManager.EXTRA_STATE_RINGING -> {
+                val now = System.currentTimeMillis()
                 isIncoming = true
-                callStartTime = System.currentTimeMillis()
+                callStartTime = now
                 lastState = TelephonyManager.EXTRA_STATE_RINGING
+
+                prefs.edit()
+                    .putLong(KEY_START_TIME, now)
+                    .putBoolean(KEY_IS_INCOMING, true)
+                    .putBoolean(KEY_WAS_ANSWERED, false)
+                    .apply()
+
+                // Immediately dispatch real-time RINGING call event if phone number is known
+                val currentNumber = incomingNumber ?: savedNumber ?: prefs.getString(KEY_SAVED_NUMBER, null)
+                if (!currentNumber.isNullOrBlank() && isValidPhoneNumber(currentNumber)) {
+                    processCallRinging(context, currentNumber, now)
+                }
             }
 
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                if (lastState == TelephonyManager.EXTRA_STATE_RINGING) {
+                val now = System.currentTimeMillis()
+                val wasRinging = lastState == TelephonyManager.EXTRA_STATE_RINGING || prefs.getBoolean(KEY_IS_INCOMING, false)
+                if (wasRinging) {
                     // Incoming call was answered
                     isIncoming = true
-                    callStartTime = System.currentTimeMillis()
+                    prefs.edit()
+                        .putBoolean(KEY_WAS_ANSWERED, true)
+                        .putLong(KEY_OFFHOOK_TIME, now)
+                        .apply()
                 } else {
                     // Outgoing call started
                     isIncoming = false
-                    callStartTime = System.currentTimeMillis()
+                    callStartTime = now
+                    prefs.edit()
+                        .putBoolean(KEY_IS_INCOMING, false)
+                        .putBoolean(KEY_WAS_ANSWERED, false)
+                        .putLong(KEY_START_TIME, now)
+                        .putLong(KEY_OFFHOOK_TIME, now)
+                        .apply()
                 }
                 lastState = TelephonyManager.EXTRA_STATE_OFFHOOK
             }
@@ -66,25 +100,86 @@ class PhoneCallReceiver : BroadcastReceiver() {
                 val prevState = lastState
                 lastState = TelephonyManager.EXTRA_STATE_IDLE
 
-                val fallbackDuration = if (callStartTime > 0L) {
-                    ((System.currentTimeMillis() - callStartTime) / 1000L).toInt().coerceAtLeast(1)
+                val persistedStartTime = prefs.getLong(KEY_START_TIME, callStartTime)
+                val persistedOffhookTime = prefs.getLong(KEY_OFFHOOK_TIME, 0L)
+                val persistedWasAnswered = prefs.getBoolean(KEY_WAS_ANSWERED, false)
+                val persistedIsIncoming = prefs.getBoolean(KEY_IS_INCOMING, isIncoming)
+                val persistedNumber = prefs.getString(KEY_SAVED_NUMBER, savedNumber)
+                val persistedRingingCallId = prefs.getString(KEY_RINGING_CALL_ID, null)
+
+                val effectiveStartTime = if (persistedOffhookTime > 0L) persistedOffhookTime else persistedStartTime
+                val fallbackDuration = if (effectiveStartTime > 0L && persistedWasAnswered) {
+                    ((System.currentTimeMillis() - effectiveStartTime) / 1000L).toInt().coerceAtLeast(1)
                 } else 0
 
-                val fallbackType = if (prevState == TelephonyManager.EXTRA_STATE_RINGING) {
-                    CallType.MISSED
-                } else if (prevState == TelephonyManager.EXTRA_STATE_OFFHOOK) {
-                    if (isIncoming) CallType.INCOMING else CallType.OUTGOING
+                val fallbackType = if (persistedWasAnswered) {
+                    if (persistedIsIncoming) CallType.INCOMING else CallType.OUTGOING
                 } else {
-                    CallType.MISSED
+                    if (prevState == TelephonyManager.EXTRA_STATE_RINGING || persistedIsIncoming) {
+                        CallType.MISSED
+                    } else {
+                        CallType.MISSED
+                    }
                 }
 
-                // Always invoke processCallEnded to ensure calls are never dropped due to lost static state
-                processCallEnded(context, savedNumber, callStartTime, fallbackType, fallbackDuration)
+                val finalFallbackNumber = incomingNumber ?: savedNumber ?: persistedNumber
 
-                // Reset state
+                // Process Call Ended asynchronously with WakeLock held
+                processCallEnded(
+                    context = context,
+                    fallbackNumber = finalFallbackNumber,
+                    ringingCallId = persistedRingingCallId,
+                    timestamp = persistedStartTime,
+                    fallbackType = fallbackType,
+                    fallbackDuration = fallbackDuration
+                )
+
+                // Clear transient call state
                 savedNumber = null
                 isIncoming = false
                 callStartTime = 0L
+                prefs.edit().clear().apply()
+            }
+        }
+    }
+
+    /**
+     * Dispatches a real-time RINGING call event so the Host device rings immediately.
+     */
+    private fun processCallRinging(context: Context, phoneNumber: String, timestamp: Long) {
+        val pendingResult = goAsync()
+        val wakeLock = acquireWakeLock(context, "SmsBridge:CallRingingWakeLock", 25_000L)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        scope.launch {
+            try {
+                val contactName = com.example.util.ContactUtils.resolveContactName(context, phoneNumber)
+                val app = context.applicationContext as? SmsBridgeApp
+                val callRepo = app?.callRepository ?: SmsBridgeApp.instance.callRepository
+                val callId = callRepo.generateCallId(phoneNumber, timestamp, CallType.RINGING)
+
+                // Persist the ringing call ID so processCallEnded updates this exact document
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_RINGING_CALL_ID, callId)
+                    .apply()
+
+                Log.i(TAG, "Real-time ringing call alert dispatched: $phoneNumber ($contactName, id=$callId)")
+
+                callRepo.handleIncomingCall(
+                    callId = callId,
+                    phoneNumber = phoneNumber,
+                    contactName = contactName,
+                    callType = CallType.RINGING,
+                    durationSeconds = 0,
+                    timestamp = timestamp,
+                    simSlot = 1
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing real-time ringing call", e)
+            } finally {
+                wakeLock?.let { if (it.isHeld) it.release() }
+                pendingResult.finish()
             }
         }
     }
@@ -92,16 +187,18 @@ class PhoneCallReceiver : BroadcastReceiver() {
     private fun processCallEnded(
         context: Context,
         fallbackNumber: String?,
+        ringingCallId: String?,
         timestamp: Long,
         fallbackType: CallType,
         fallbackDuration: Int
     ) {
         val pendingResult = goAsync()
+        val wakeLock = acquireWakeLock(context, "SmsBridge:CallEndedWakeLock", 35_000L)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         scope.launch {
             try {
-                // Short pause to let Android system finish writing to CallLog
+                // Pause to let Android system finish writing to CallLog ContentProvider
                 kotlinx.coroutines.delay(1200L)
 
                 var finalNumber = fallbackNumber ?: ""
@@ -119,9 +216,9 @@ class PhoneCallReceiver : BroadcastReceiver() {
 
                 if (hasCallLogPermission) {
                     var callLogInfo = queryLatestCallLog(context)
-                    // If not resolved on first check, wait another 1500ms and retry (for slower OEM skins like MIUI/HyperOS)
+                    // If not resolved on first check, wait another 1200ms and retry
                     if (callLogInfo == null) {
-                        kotlinx.coroutines.delay(1500L)
+                        kotlinx.coroutines.delay(1200L)
                         callLogInfo = queryLatestCallLog(context)
                     }
 
@@ -140,22 +237,19 @@ class PhoneCallReceiver : BroadcastReceiver() {
                     finalContactName = com.example.util.ContactUtils.resolveContactName(context, finalNumber)
                 }
 
-                // Check if number is valid - NEVER forward blank, unknown, or spurious fake calls
-                val isInvalidNumber = finalNumber.isBlank() ||
-                        finalNumber.equals("Unknown", ignoreCase = true) ||
-                        finalNumber == "-1" || finalNumber == "-2" || finalNumber == "-3" ||
-                        finalNumber.equals("private", ignoreCase = true)
-
-                if (isInvalidNumber) {
-                    Log.w(TAG, "No valid phone number resolved for call event (number='$finalNumber'). Skipping forwarding to prevent fake/unknown call logs.")
+                if (!isValidPhoneNumber(finalNumber)) {
+                    Log.w(TAG, "No valid phone number resolved for call event (number='$finalNumber'). Skipping to avoid spurious fake logs.")
                     return@launch
                 }
 
                 val app = context.applicationContext as? SmsBridgeApp
                 val callRepo = app?.callRepository ?: SmsBridgeApp.instance.callRepository
-                val callId = callRepo.generateCallId(finalNumber, finalTimestamp, finalCallType)
 
-                Log.i(TAG, "Processed call: $finalNumber ($finalCallType, ${finalDuration}s, $finalContactName, id=$callId)")
+                // If this call was previously ringing, reuse the ringingCallId so the document/notification updates seamlessly!
+                val callId = ringingCallId?.ifBlank { null }
+                    ?: callRepo.generateCallId(finalNumber, finalTimestamp, finalCallType)
+
+                Log.i(TAG, "Processed call ended: $finalNumber ($finalCallType, ${finalDuration}s, $finalContactName, id=$callId)")
 
                 callRepo.handleIncomingCall(
                     callId = callId,
@@ -169,8 +263,33 @@ class PhoneCallReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing call ended event", e)
             } finally {
+                wakeLock?.let { if (it.isHeld) it.release() }
                 pendingResult.finish()
             }
+        }
+    }
+
+    private fun isValidPhoneNumber(number: String): Boolean {
+        if (number.isBlank()) return false
+        val trimmed = number.trim()
+        if (trimmed.equals("Unknown", ignoreCase = true) ||
+            trimmed == "-1" || trimmed == "-2" || trimmed == "-3" ||
+            trimmed.equals("private", ignoreCase = true)
+        ) {
+            return false
+        }
+        return true
+    }
+
+    private fun acquireWakeLock(context: Context, tag: String, timeoutMs: Long): PowerManager.WakeLock? {
+        return try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val wl = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag)
+            wl?.acquire(timeoutMs)
+            wl
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire wake lock for $tag", e)
+            null
         }
     }
 
@@ -220,16 +339,10 @@ class PhoneCallReceiver : BroadcastReceiver() {
                     val date = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
 
                     // CallLog.Calls.DATE is the call START time on Android.
-                    // Call end time is date + duration in milliseconds.
                     val callEndTime = date + (duration * 1000L)
                     val isRecent = Math.abs(now - callEndTime) < 300_000L || Math.abs(now - date) < 300_000L
 
-                    val isValidNumber = number.isNotBlank() &&
-                            !number.equals("Unknown", ignoreCase = true) &&
-                            number != "-1" && number != "-2" && number != "-3" &&
-                            !number.equals("private", ignoreCase = true)
-
-                    if (isRecent && isValidNumber) {
+                    if (isRecent && isValidPhoneNumber(number)) {
                         val callType = when (typeInt) {
                             CallLog.Calls.INCOMING_TYPE -> CallType.INCOMING
                             CallLog.Calls.OUTGOING_TYPE -> CallType.OUTGOING

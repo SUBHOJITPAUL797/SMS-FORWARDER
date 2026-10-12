@@ -1907,7 +1907,7 @@ fun HostHomeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     val missedCount = rawCalls.count { it.callType == CallType.MISSED || it.callType == CallType.REJECTED }
-                                    val incomingCount = rawCalls.count { it.callType == CallType.INCOMING }
+                                    val incomingCount = rawCalls.count { it.callType == CallType.INCOMING || it.callType == CallType.RINGING }
                                     val outgoingCount = rawCalls.count { it.callType == CallType.OUTGOING }
 
                                     CallMetricPill(
@@ -2325,6 +2325,7 @@ private fun CallCardItem(
 
     // Type styling
     val (typeLabel, typeColor, typeBg, typeIcon) = when (call.callType) {
+        CallType.RINGING -> Quadruple("Ringing Now", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.Phone)
         CallType.MISSED -> Quadruple("Missed Call", Color(0xFFDC2626), Color(0xFFFEE2E2), Icons.Default.CallMissed)
         CallType.INCOMING -> Quadruple("Incoming", Color(0xFF16A34A), Color(0xFFDCFCE7), Icons.Default.CallReceived)
         CallType.OUTGOING -> Quadruple("Outgoing", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.CallMade)
@@ -2679,7 +2680,7 @@ private fun CallHistoryDialog(
 
     val totalCount = callerLogs.size
     val missedCount = callerLogs.count { it.callType == CallType.MISSED || it.callType == CallType.REJECTED }
-    val incomingCount = callerLogs.count { it.callType == CallType.INCOMING }
+    val incomingCount = callerLogs.count { it.callType == CallType.INCOMING || it.callType == CallType.RINGING }
     val outgoingCount = callerLogs.count { it.callType == CallType.OUTGOING }
 
     val displayInitial = when {
@@ -2852,6 +2853,7 @@ private fun CallHistoryDialog(
                     ) {
                         itemsIndexed(callerLogs, key = { index, entry -> "${entry.callId}_$index" }) { _, entry ->
                             val (typeLabel, typeColor, typeBg, typeIcon) = when (entry.callType) {
+                                CallType.RINGING -> Quadruple("Ringing Now", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.Phone)
                                 CallType.MISSED -> Quadruple("Missed Call", Color(0xFFDC2626), Color(0xFFFEE2E2), Icons.Default.CallMissed)
                                 CallType.INCOMING -> Quadruple("Incoming", Color(0xFF16A34A), Color(0xFFDCFCE7), Icons.Default.CallReceived)
                                 CallType.OUTGOING -> Quadruple("Outgoing", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.CallMade)
