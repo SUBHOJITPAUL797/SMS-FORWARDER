@@ -454,9 +454,12 @@ class SmsRepository(
         WorkManager.getInstance(context).enqueue(uploadRequest)
     }
 
-    fun startHostSync(hostCode: String) {
+    fun startHostSync(hostCode: String, force: Boolean = false) {
         if (hostCode.isBlank()) return
         synchronized(hostSmsSyncJobs) {
+            if (force) {
+                hostSmsSyncJobs.remove(hostCode)?.cancel()
+            }
             hostSmsSyncJobs.keys.filter { it != hostCode }.forEach { oldCode ->
                 hostSmsSyncJobs.remove(oldCode)?.cancel()
             }
@@ -473,6 +476,25 @@ class SmsRepository(
                     Log.e(TAG, "Error in host SMS live sync", e)
                 }
             }
+        }
+    }
+
+    suspend fun syncLatestMessagesFromCloud(hostCode: String, limit: Long = 25): Result<Int> {
+        if (hostCode.isBlank()) return Result.success(0)
+        return try {
+            val fetchResult = firestoreSource.fetchLatestSms(hostCode, limit = limit)
+            if (fetchResult.isFailure) {
+                return Result.failure(fetchResult.exceptionOrNull() ?: Exception("Failed to fetch latest SMS"))
+            }
+            val messages = fetchResult.getOrNull() ?: emptyList()
+            if (messages.isNotEmpty()) {
+                val entities = messages.map { HostMessageEntity.fromSmsMessage(hostCode, it) }
+                hostMessageDao.insertAll(entities)
+            }
+            Result.success(messages.size)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing latest SMS from cloud", e)
+            Result.failure(e)
         }
     }
 

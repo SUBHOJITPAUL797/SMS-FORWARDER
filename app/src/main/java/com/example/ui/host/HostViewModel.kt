@@ -47,7 +47,12 @@ class HostViewModel(
 
     init {
         viewModelScope.launch {
-            _hostCode.value = authRepository.getHostCode()
+            val code = authRepository.getHostCode()
+            _hostCode.value = code
+            if (code.isNotEmpty()) {
+                callRepository.syncLatestCallsFromCloud(code, limit = 25)
+                smsRepository.syncLatestMessagesFromCloud(code, limit = 25)
+            }
         }
     }
 
@@ -505,10 +510,10 @@ class HostViewModel(
             _isRefreshing.value = true
             val code = _hostCode.value
             if (code.isNotEmpty()) {
-                callRepository.startHostSync(code)
-                smsRepository.startHostSync(code)
-                callRepository.loadOlderCallsFromCloud(code, pageSize = 25)
-                smsRepository.loadOlderMessagesFromCloud(code, pageSize = 25)
+                callRepository.startHostSync(code, force = true)
+                smsRepository.startHostSync(code, force = true)
+                callRepository.syncLatestCallsFromCloud(code, limit = 25)
+                smsRepository.syncLatestMessagesFromCloud(code, limit = 25)
             }
             kotlinx.coroutines.delay(500)
             _isRefreshing.value = false

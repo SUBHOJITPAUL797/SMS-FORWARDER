@@ -575,9 +575,12 @@ class CallRepository(
 
     // ----------------- Host Observation APIs -----------------
 
-    fun startHostSync(hostCode: String) {
+    fun startHostSync(hostCode: String, force: Boolean = false) {
         if (hostCode.isBlank()) return
         synchronized(hostCallSyncJobs) {
+            if (force) {
+                hostCallSyncJobs.remove(hostCode)?.cancel()
+            }
             hostCallSyncJobs.keys.filter { it != hostCode }.forEach { oldCode ->
                 hostCallSyncJobs.remove(oldCode)?.cancel()
             }
@@ -594,6 +597,25 @@ class CallRepository(
                     Log.e(TAG, "Error in host call live sync", e)
                 }
             }
+        }
+    }
+
+    suspend fun syncLatestCallsFromCloud(hostCode: String, limit: Long = 25): Result<Int> {
+        if (hostCode.isBlank()) return Result.success(0)
+        return try {
+            val fetchResult = firestoreSource.fetchLatestCalls(hostCode, limit = limit)
+            if (fetchResult.isFailure) {
+                return Result.failure(fetchResult.exceptionOrNull() ?: Exception("Failed to fetch latest calls"))
+            }
+            val calls = fetchResult.getOrNull() ?: emptyList()
+            if (calls.isNotEmpty()) {
+                val entities = calls.map { HostCallEntity.fromCallRecord(hostCode, it) }
+                hostCallDao.insertAll(entities)
+            }
+            Result.success(calls.size)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing latest calls from cloud", e)
+            Result.failure(e)
         }
     }
 

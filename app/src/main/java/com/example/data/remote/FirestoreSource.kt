@@ -430,6 +430,27 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
         }
     }
 
+    suspend fun fetchLatestSms(hostUid: String, limit: Long = 25): Result<List<SmsMessage>> {
+        if (hostUid.isBlank()) return Result.success(emptyList())
+        return try {
+            val snapshot = firestore.collection(COLLECTION_SMS)
+                .document(hostUid)
+                .collection("messages")
+                .orderBy("receivedAt", Query.Direction.DESCENDING)
+                .limit(limit)
+                .get()
+                .await()
+
+            val messages = snapshot.documents.mapNotNull { doc ->
+                doc.data?.let { SmsMessage.fromMap(it) }
+            }
+            Result.success(messages)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching latest SMS messages", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun markSmsAsRead(hostUid: String, messageId: String): Result<Unit> {
         return try {
             firestore.collection(COLLECTION_SMS)
@@ -600,6 +621,27 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
             Result.success(calls)
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching older call records", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun fetchLatestCalls(hostUid: String, limit: Long = 25): Result<List<CallRecord>> {
+        if (hostUid.isBlank()) return Result.success(emptyList())
+        return try {
+            val snapshot = firestore.collection(COLLECTION_CALLS)
+                .document(hostUid)
+                .collection("calls")
+                .orderBy("timestamp", Query.Direction.DESCENDING)
+                .limit(limit)
+                .get()
+                .await()
+
+            val calls = snapshot.documents.mapNotNull { doc ->
+                doc.data?.let { CallRecord.fromMap(it) }
+            }
+            Result.success(calls)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching latest call records", e)
             Result.failure(e)
         }
     }
