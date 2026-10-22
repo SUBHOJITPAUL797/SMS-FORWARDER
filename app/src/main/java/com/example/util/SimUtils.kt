@@ -107,12 +107,12 @@ object SimUtils {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val base = context.getSystemService(SmsManager::class.java) 
                     ?: @Suppress("DEPRECATION") SmsManager.getDefault()
-                if (subscriptionId != null && subscriptionId > 0) {
+                if (subscriptionId != null && subscriptionId >= 0) {
                     base.createForSubscriptionId(subscriptionId)
                 } else {
                     base
                 }
-            } else if (subscriptionId != null && subscriptionId > 0) {
+            } else if (subscriptionId != null && subscriptionId >= 0) {
                 @Suppress("DEPRECATION")
                 SmsManager.getSmsManagerForSubscriptionId(subscriptionId)
             } else {

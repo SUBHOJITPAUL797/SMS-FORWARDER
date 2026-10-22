@@ -8,6 +8,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -44,6 +48,11 @@ class SmsBridgeService : Service() {
     private var heartbeatJob: kotlinx.coroutines.Job? = null
     private var clientLinkObserverJob: kotlinx.coroutines.Job? = null
 
+    // ── Network reconnect listener ────────────────────────────────────────────
+    // Flushes any SMS/Call queue items that were buffered while the phone was offline.
+    private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
+    @Volatile private var wasOffline: Boolean = false
+
     override fun onCreate() {
         super.onCreate()
         isRunning = true
@@ -68,6 +77,9 @@ class SmsBridgeService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+
+        // 3a. Register network reconnect callback — flush offline queue the moment internet returns
+        registerNetworkReconnectCallback()
 
         // 3. Record service active in preferences and handle role-specific monitoring
         serviceScope.launch {
@@ -357,11 +369,83 @@ class SmsBridgeService : Service() {
         Log.d(TAG, "SmsBridgeService onDestroy()")
         isRunning = false
         unregisterCallLogObserver()
+        unregisterNetworkCallback()
         wakeLock?.let {
             if (it.isHeld) it.release()
         }
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    // ── Network Reconnect Callback ────────────────────────────────────────────
+
+    private fun registerNetworkReconnectCallback() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+
+            // Seed the initial offline state
+            val active = cm.activeNetwork
+            val caps = active?.let { cm.getNetworkCapabilities(it) }
+            wasOffline = caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            Log.d(TAG, "Network reconnect callback registered. Initial offline=$wasOffline")
+
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    if (wasOffline) {
+                        wasOffline = false
+                        Log.i(TAG, "📶 Network reconnected! Flushing offline SMS + Call queue immediately...")
+                        serviceScope.launch {
+                            try {
+                                val app = applicationContext as? SmsBridgeApp ?: return@launch
+                                // Small delay to let the connection fully stabilise
+                                kotlinx.coroutines.delay(1500L)
+                                val smsFlushed = run {
+                                    app.smsRepository.syncAllPendingMessages()
+                                    true
+                                }
+                                val callsFlushed = app.callRepository.syncAllPendingCalls()
+                                Log.i(TAG, "Offline queue flush complete — smsFlushed=$smsFlushed, callsFlushed=$callsFlushed")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error flushing offline queue on reconnect", e)
+                            }
+                        }
+                    } else {
+                        wasOffline = false
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    wasOffline = true
+                    Log.d(TAG, "📵 Network lost — will flush queue when reconnected.")
+                }
+
+                override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                    val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    if (hasInternet && wasOffline) {
+                        onAvailable(network)
+                    }
+                }
+            }
+
+            cm.registerNetworkCallback(request, callback)
+            connectivityCallback = callback
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register network reconnect callback", e)
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            connectivityCallback?.let { cm?.unregisterNetworkCallback(it) }
+            connectivityCallback = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to unregister network callback", e)
+        }
     }
 
     private fun createServiceNotification(): Notification {

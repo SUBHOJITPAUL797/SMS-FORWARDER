@@ -8,11 +8,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -262,8 +265,8 @@ fun ClientPairingScreen(
                     },
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00668B)),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.QrCodeScanner,
@@ -274,7 +277,7 @@ fun ClientPairingScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Scan Host QR Code to Connect",
-                        fontSize = 15.sp,
+                        fontSize = 14.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
@@ -285,7 +288,7 @@ fun ClientPairingScreen(
                 OutlinedButton(
                     onClick = { showManualCodeDialog = true },
                     shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Keyboard,
@@ -293,7 +296,7 @@ fun ClientPairingScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Enter Host Code Manually", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Enter Host Code Manually", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -332,7 +335,7 @@ fun ClientPairingScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(28.dp),
+                            .padding(horizontal = 16.dp, vertical = 24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         when (val current = state) {
@@ -350,25 +353,28 @@ fun ClientPairingScreen(
                                 )
                             }
                             is PairingState.CodeGenerated -> {
-                                // Code display boxes
+                                // Code display boxes - responsive weights that adapt perfectly to any device screen size
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     current.code.forEach { char ->
                                         Surface(
-                                            shape = RoundedCornerShape(14.dp),
+                                            shape = RoundedCornerShape(12.dp),
                                             color = Color(0xFFEADDFF),
                                             border = androidx.compose.foundation.BorderStroke(
                                                 1.5.dp,
                                                 Color(0xFF6750A4)
                                             ),
-                                            modifier = Modifier.size(width = 44.dp, height = 56.dp)
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 46.dp, max = 56.dp)
                                         ) {
                                             Box(contentAlignment = Alignment.Center) {
                                                 Text(
                                                     text = char.toString(),
-                                                    fontSize = 26.sp,
+                                                    fontSize = 22.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     fontFamily = FontFamily.Monospace,
                                                     color = Color(0xFF21005D)
@@ -391,7 +397,7 @@ fun ClientPairingScreen(
                                     shape = RoundedCornerShape(16.dp),
                                     color = Color.White,
                                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCAC4D0)),
-                                    modifier = Modifier.size(200.dp)
+                                    modifier = Modifier.sizeIn(maxWidth = 190.dp, maxHeight = 190.dp).aspectRatio(1f)
                                 ) {
                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(12.dp)) {
                                         Image(

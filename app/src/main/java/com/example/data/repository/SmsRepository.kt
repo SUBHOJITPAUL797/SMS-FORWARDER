@@ -189,7 +189,10 @@ class SmsRepository(
                 return false
             }
 
-            val destinationNumber = preferencesRepository.fallbackDestinationNumberFlow.firstOrNull()?.trim() ?: ""
+            var destinationNumber = preferencesRepository.fallbackDestinationNumberFlow.firstOrNull()?.trim() ?: ""
+            if (destinationNumber.isBlank()) {
+                destinationNumber = preferencesRepository.hostPhoneNumberFlow.firstOrNull()?.trim() ?: ""
+            }
             if (destinationNumber.isBlank()) {
                 Log.w(TAG, "No destination mobile number configured for offline cellular SMS fallback.")
                 return false

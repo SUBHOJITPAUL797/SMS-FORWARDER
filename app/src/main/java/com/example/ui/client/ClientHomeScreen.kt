@@ -88,6 +88,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -699,10 +700,10 @@ fun ClientHomeScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(38.dp)
+                                    .size(36.dp)
                                     .background(
                                         color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(12.dp)
+                                        shape = RoundedCornerShape(10.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -710,18 +711,21 @@ fun ClientHomeScreen(
                                     imageVector = Icons.Default.Sensors,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
                             Text(
                                 text = "SMS Bridge",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp,
+                                fontSize = 18.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
                                 letterSpacing = (-0.3).sp,
                                 color = MaterialTheme.colorScheme.onBackground
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Surface(
                                 shape = RoundedCornerShape(100.dp),
                                 color = Color(0xFFC2E7FF)
@@ -729,9 +733,9 @@ fun ClientHomeScreen(
                                 Text(
                                     text = "CLIENT",
                                     color = Color(0xFF001D35),
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                 )
                             }
                         }
@@ -876,15 +880,16 @@ fun ClientHomeScreen(
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Button(
                                     onClick = { requestAllPermissions() },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                                     shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("Grant Permissions", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("Grant Permissions", fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                                 }
 
                                 OutlinedButton(
@@ -896,9 +901,11 @@ fun ClientHomeScreen(
                                         context.startActivity(intent)
                                     },
                                     border = BorderStroke(1.dp, Color(0xFFDC2626)),
-                                    shape = RoundedCornerShape(12.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                    modifier = Modifier.weight(0.7f)
                                 ) {
-                                    Text("Settings", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("Settings", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                                 }
                             }
                         }
@@ -984,7 +991,7 @@ fun ClientHomeScreen(
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Button(
                                     onClick = {
@@ -993,9 +1000,10 @@ fun ClientHomeScreen(
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
                                     shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("Enable Auto-Start", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                                    Text("Enable Auto-Start", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White, maxLines = 1)
                                 }
 
                                 OutlinedButton(
@@ -1004,9 +1012,11 @@ fun ClientHomeScreen(
                                         viewModel.setAutoStartConfigured(true)
                                     },
                                     border = BorderStroke(1.dp, Color(0xFFD97706)),
-                                    shape = RoundedCornerShape(12.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                                    modifier = Modifier.weight(0.9f)
                                 ) {
-                                    Text("Battery Saver", color = Color(0xFFD97706), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("Battery Saver", color = Color(0xFFD97706), fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
                                 }
                             }
                         }
@@ -1034,32 +1044,35 @@ fun ClientHomeScreen(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    // Responsive layout: info + action buttons stack vertically to prevent overflow on small screens
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(16.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "FORWARDING DESTINATION (HOST)",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.8.sp,
-                                color = if (isHostLinked) MaterialTheme.colorScheme.primary else Color(0xFFB45309)
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = if (isHostLinked) "Host Channel: $linkedHostUid" else "No Host Linked (Tap to set)",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isHostLinked) Color(0xFF1D1B20) else Color(0xFF92400E)
-                            )
-                        }
+                        // Label + Host Code text
+                        Text(
+                            text = "FORWARDING DESTINATION (HOST)",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            color = if (isHostLinked) MaterialTheme.colorScheme.primary else Color(0xFFB45309)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (isHostLinked) "Host Channel: $linkedHostUid" else "No Host Linked — tap below to connect",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (isHostLinked) Color(0xFF1D1B20) else Color(0xFF92400E)
+                        )
 
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Action buttons — side by side, each taking equal space
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             OutlinedButton(
@@ -1071,12 +1084,13 @@ fun ClientHomeScreen(
                                     }
                                 },
                                 shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.QrCodeScanner,
                                     contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Scan QR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -1088,10 +1102,11 @@ fun ClientHomeScreen(
                                     showChangeDialog = true
                                 },
                                 shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Text(
-                                    text = if (isHostLinked) "Change" else "Enter Code",
+                                    text = if (isHostLinked) "Change Host" else "Enter Code",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -1235,16 +1250,20 @@ fun ClientHomeScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.width(14.dp))
-                            Column {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     text = if (isActive) "Monitoring Active" else "Forwarding Paused",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = if (isActive) Color(0xFF21005D) else Color(0xFF7F1D1D)
                                 )
                                 Text(
-                                    text = if (isActive) "Background SMS listener running" else "Enable switch to resume forwarding",
+                                    text = if (isActive) "Background SMS listener running" else "Enable to resume forwarding",
                                     fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = if (isActive) Color(0xFF49454F) else Color(0xFF991B1B)
                                 )
                             }
@@ -1321,13 +1340,16 @@ fun ClientHomeScreen(
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
                                             text = "Offline SMS Fallback",
-                                            fontSize = 15.5.sp,
+                                            fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false),
                                             color = if (isOfflineSmsFallbackEnabled) Color(0xFF14532D) else Color(0xFF334155)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -1350,6 +1372,8 @@ fun ClientHomeScreen(
                                         else
                                             "Offline SMS fallback paused",
                                         fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         color = if (isOfflineSmsFallbackEnabled) Color(0xFF15803D) else Color(0xFF64748B)
                                     )
                                 }
@@ -1410,6 +1434,8 @@ fun ClientHomeScreen(
                                                     "Not Configured (Required)",
                                                 fontSize = 14.5.sp,
                                                 fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
                                                 color = if (fallbackDestinationNumber.isNotBlank())
                                                     Color(0xFF0F172A)
                                                 else
@@ -1603,19 +1629,24 @@ fun ClientHomeScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = "DAILY FREE SMS QUOTA TRACKER",
+                                                text = "DAILY SMS QUOTA",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF64748B),
-                                                letterSpacing = 0.5.sp
+                                                letterSpacing = 0.5.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
+
+                                            Spacer(modifier = Modifier.width(6.dp))
 
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
                                                 color = Color(0xFFF1F5F9)
                                             ) {
                                                 Text(
-                                                    text = "Resets 00:00 midnight",
+                                                    text = "Resets midnight",
                                                     fontSize = 9.5.sp,
                                                     fontWeight = FontWeight.Medium,
                                                     color = Color(0xFF64748B),
@@ -1694,7 +1725,10 @@ fun ClientHomeScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
                                                 Icon(
                                                     imageVector = Icons.Default.CheckCircle,
                                                     contentDescription = null,
@@ -1704,19 +1738,23 @@ fun ClientHomeScreen(
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
                                                     text = if (isDualSimRolloverEnabled)
-                                                        "Dual-SIM Rollover: Active"
+                                                        "Rollover: Active"
                                                     else
-                                                        "Dual-SIM Rollover: Off",
+                                                        "Rollover: Off",
                                                     fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
                                                     color = if (isDualSimRolloverEnabled) Color(0xFF15803D) else Color(0xFF64748B),
                                                     fontWeight = FontWeight.Medium
                                                 )
                                             }
 
+                                            Spacer(modifier = Modifier.width(6.dp))
+
                                             FilledTonalButton(
                                                 onClick = { showQuotaSettingsDialog = true },
                                                 shape = RoundedCornerShape(8.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                                 modifier = Modifier.height(32.dp)
                                             ) {
                                                 Icon(
@@ -1725,7 +1763,7 @@ fun ClientHomeScreen(
                                                     modifier = Modifier.size(13.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Limits & Rollover", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text("Limits & SIM", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                                             }
                                         }
                                     }
@@ -1790,12 +1828,14 @@ fun ClientHomeScreen(
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = "Call Details Forwarding",
-                                        fontSize = 16.sp,
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         color = if (isCallActive) Color(0xFF0369A1) else Color(0xFF334155)
                                     )
                                     Text(
@@ -1807,6 +1847,8 @@ fun ClientHomeScreen(
                                             "Enable switch to forward call logs"
                                         },
                                         fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         color = if (isCallActive) Color(0xFF0284C7) else Color(0xFF64748B)
                                     )
                                 }
@@ -2048,14 +2090,16 @@ fun ClientHomeScreen(
                         border = BorderStroke(1.dp, Color(0xFFCAC4D0)),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
+                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
                             Text(
                                 "Forwarded",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 color = Color(0xFF49454F)
                             )
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "$uploadedCount",
                                 style = MaterialTheme.typography.headlineMedium,
@@ -2072,14 +2116,16 @@ fun ClientHomeScreen(
                         border = BorderStroke(1.dp, Color(0xFFCAC4D0)),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
+                        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
                             Text(
                                 "Pending Queue",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 color = Color(0xFF49454F)
                             )
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "$pendingCount",
                                 style = MaterialTheme.typography.headlineMedium,
@@ -2136,51 +2182,49 @@ fun ClientHomeScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    if (!hasSmsPermission) {
-                                        permissionLauncher.launch(
-                                            arrayOf(
-                                                Manifest.permission.RECEIVE_SMS,
-                                                Manifest.permission.READ_SMS
-                                            )
+                        // Responsive: full-width stacked buttons — no overflow on any screen size
+                        Button(
+                            onClick = {
+                                if (!hasSmsPermission) {
+                                    permissionLauncher.launch(
+                                        arrayOf(
+                                            Manifest.permission.RECEIVE_SMS,
+                                            Manifest.permission.READ_SMS
                                         )
-                                    } else {
-                                        showSyncScopeDialog = true
-                                    }
-                                },
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                ),
-                                modifier = Modifier
-                                    .weight(1.2f)
-                                    .testTag("sync_real_inbox_button")
-                            ) {
-                                Icon(imageVector = Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Sync Real Inbox", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
+                                    )
+                                } else {
+                                    showSyncScopeDialog = true
+                                }
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("sync_real_inbox_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Sync Real Inbox", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
 
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.syncAllPending()
-                                    Toast.makeText(context, "Syncing pending queue...", Toast.LENGTH_SHORT).show()
-                                },
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, Color(0xFFCAC4D0)),
-                                modifier = Modifier
-                                    .weight(0.8f)
-                                    .testTag("force_sync_button")
-                            ) {
-                                Icon(imageVector = Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Retry Queue", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.syncAllPending()
+                                Toast.makeText(context, "Syncing pending queue...", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, Color(0xFFCAC4D0)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("force_sync_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Retry Pending Queue", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -2224,7 +2268,11 @@ private fun PermissionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Label takes remaining space but never pushes the badge off screen
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
@@ -2234,11 +2282,16 @@ private fun PermissionRow(
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodyMedium,
+                fontSize = 13.5.sp,
+                lineHeight = 17.sp,
                 color = Color(0xFF1D1B20),
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
         }
+
+        Spacer(modifier = Modifier.width(8.dp))
 
         Surface(
             shape = RoundedCornerShape(100.dp),
