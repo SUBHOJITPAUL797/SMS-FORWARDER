@@ -255,6 +255,7 @@ fun HostHomeScreen(
 
     if (showQrScanner) {
         QrScannerOverlay(
+            instructionText = "Point camera at the Client's QR Code",
             onCodeScanned = { rawValue ->
                 val parsed = QrCodeUtils.parseScannedQr(rawValue)
                 if (parsed != null) {
@@ -269,6 +270,9 @@ fun HostHomeScreen(
                             Toast.makeText(context, "Pairing failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                         }
                     }
+                    true
+                } else {
+                    false
                 }
             },
             onDismiss = { showQrScanner = false }

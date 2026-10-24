@@ -124,12 +124,16 @@ fun ClientPairingScreen(
     // Full-screen CameraX QR Scanner overlay to scan Host's QR code
     if (showQrScanner) {
         QrScannerOverlay(
+            instructionText = "Point camera at the Host's QR Code",
             onCodeScanned = { rawValue ->
                 val parsed = QrCodeUtils.parseScannedQr(rawValue)
                 if (parsed != null) {
                     showQrScanner = false
                     Toast.makeText(context, "Scanned Host Code: $parsed. Connecting...", Toast.LENGTH_SHORT).show()
                     viewModel.directPairClientToHost(parsed)
+                    true
+                } else {
+                    false
                 }
             },
             onDismiss = { showQrScanner = false }

@@ -78,8 +78,20 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.statusBarsPadding
+import android.os.Handler
+import android.os.Looper
 import com.example.util.QrCodeUtils
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
@@ -139,11 +151,15 @@ fun HostPairingScreen(
     // Full-screen QR scanner overlay
     if (showQrScanner) {
         QrScannerOverlay(
+            instructionText = "Point camera at Client's QR Code",
             onCodeScanned = { rawValue ->
                 val parsed = QrCodeUtils.parseScannedQr(rawValue)
                 if (parsed != null) {
                     showQrScanner = false
                     viewModel.pairAsHost(parsed)
+                    true
+                } else {
+                    false
                 }
             },
             onDismiss = { showQrScanner = false }
@@ -373,16 +389,21 @@ fun HostPairingScreen(
 
 /**
  * Full-screen camera overlay that uses CameraX + ZXing to scan QR codes.
- * Calls [onCodeScanned] with the raw decoded string when a QR is found.
+ * Dispatches code detections safely on the Main Thread and only marks [scanned]
+ * as true when [onCodeScanned] returns true.
  */
 @Composable
 fun QrScannerOverlay(
-    onCodeScanned: (String) -> Unit,
-    onDismiss: () -> Unit
+    onCodeScanned: (String) -> Boolean,
+    onDismiss: () -> Unit,
+    instructionText: String = "Point at the QR code"
 ) {
+    BackHandler(onBack = onDismiss)
+
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var scanned by remember { mutableStateOf(false) }
 
@@ -397,10 +418,24 @@ fun QrScannerOverlay(
         }
     }
 
+    // Scanning laser animation
+    val infiniteTransition = rememberInfiniteTransition(label = "scanner_laser")
+    val laserPosition by infiniteTransition.animateFloat(
+        initialValue = 0.05f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "laser_y"
+    )
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
-                val previewView = PreviewView(ctx)
+                val previewView = PreviewView(ctx).apply {
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                }
                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                 cameraProviderFuture.addListener({
                     val cameraProvider = cameraProviderFuture.get()
@@ -411,7 +446,12 @@ fun QrScannerOverlay(
                     }
 
                     val reader = MultiFormatReader().apply {
-                        setHints(mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE)))
+                        setHints(
+                            mapOf(
+                                DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+                                DecodeHintType.TRY_HARDER to java.lang.Boolean.TRUE
+                            )
+                        )
                     }
 
                     val imageAnalysis = ImageAnalysis.Builder()
@@ -432,15 +472,36 @@ fun QrScannerOverlay(
                                 val source = PlanarYUVLuminanceSource(
                                     bytes, rowStride, height, 0, 0, width, height, false
                                 )
-                                val binaryBitmap = BinaryBitmap(HybridBinarizer(source))
-                                val result = reader.decode(binaryBitmap)
-                                scanned = true
-                                onCodeScanned(result.text)
-                            } catch (_: NotFoundException) {
-                                // No QR found in this frame — keep scanning
+                                var binaryBitmap = BinaryBitmap(HybridBinarizer(source))
+                                var decodedText: String? = null
+                                try {
+                                    decodedText = reader.decode(binaryBitmap).text
+                                } catch (_: NotFoundException) {
+                                    // Try inverted for dark-mode QR codes
+                                    try {
+                                        val inverted = source.invert()
+                                        binaryBitmap = BinaryBitmap(HybridBinarizer(inverted))
+                                        decodedText = reader.decode(binaryBitmap).text
+                                    } catch (_: NotFoundException) {
+                                        // No QR found in this frame
+                                    }
+                                }
+
+                                if (decodedText != null && !scanned) {
+                                    val textFound = decodedText
+                                    mainHandler.post {
+                                        if (!scanned) {
+                                            val accepted = onCodeScanned(textFound)
+                                            if (accepted) {
+                                                scanned = true
+                                            }
+                                        }
+                                    }
+                                }
                             } catch (e: Exception) {
                                 android.util.Log.w("QrScanner", "Decode error", e)
                             } finally {
+                                reader.reset()
                                 imageProxy.close()
                             }
                         } else {
@@ -465,44 +526,78 @@ fun QrScannerOverlay(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Scan frame overlay hint
+        // Center reticle viewfinder overlay
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color.Transparent,
-                border = androidx.compose.foundation.BorderStroke(3.dp, Color.White.copy(alpha = 0.8f)),
-                modifier = Modifier.size(240.dp)
-            ) {}
+            Box(
+                modifier = Modifier
+                    .size(260.dp)
+                    .border(BorderStroke(2.5.dp, Color(0xFF00E5FF).copy(alpha = 0.85f)), RoundedCornerShape(20.dp))
+                    .background(Color(0xFF00E5FF).copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+            ) {
+                // Animated laser line
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.5.dp)
+                        .align(Alignment.TopCenter)
+                        .padding(top = (260 * laserPosition).dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    Color(0xFF00E5FF),
+                                    Color(0xFF80D8FF),
+                                    Color(0xFF00E5FF),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+            }
 
+            // Bottom instruction pill
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 80.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "Point at the QR code on the Client phone",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                    textAlign = TextAlign.Center,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                )
+                        .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = null,
+                        tint = Color(0xFF00E5FF),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = instructionText,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         }
 
-        // Close button
+        // Close button (Top-Right, accounting for status bar)
         IconButton(
             onClick = onDismiss,
             modifier = Modifier
                 .align(Alignment.TopEnd)
+                .statusBarsPadding()
                 .padding(16.dp)
-                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
@@ -512,3 +607,19 @@ fun QrScannerOverlay(
         }
     }
 }
+
+/**
+ * Backward compatibility overload for callers passing a Unit lambda.
+ */
+@Composable
+fun QrScannerOverlay(
+    onCodeScanned: (String) -> Unit,
+    onDismiss: () -> Unit
+) = QrScannerOverlay(
+    onCodeScanned = {
+        onCodeScanned(it)
+        true
+    },
+    onDismiss = onDismiss,
+    instructionText = "Point at the QR code"
+)

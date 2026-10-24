@@ -202,6 +202,7 @@ fun ClientHomeScreen(
     // CameraX QR Scanner overlay to scan Host's QR code
     if (showHostQrScanner) {
         QrScannerOverlay(
+            instructionText = "Point camera at the Host's QR Code",
             onCodeScanned = { rawValue ->
                 val qrData = QrCodeUtils.parseScannedQrData(rawValue)
                 if (qrData != null) {
@@ -211,10 +212,14 @@ fun ClientHomeScreen(
                     viewModel.updateLinkedHostCode(qrData.code, qrData.phoneNumber) { success, msg ->
                         Toast.makeText(context, if (success) "Connected to Host (${qrData.code})!" else msg, Toast.LENGTH_SHORT).show()
                     }
+                    true
+                } else {
+                    false
                 }
             },
             onDismiss = { showHostQrScanner = false }
         )
+        return
     }
 
     // Automatic update check in background on launch

@@ -64,6 +64,13 @@ class WalkieTalkieViewModel(
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
     // ── Pairing & Peer Info ────────────────────────────────────
+    private val smsRepository: com.example.data.repository.SmsRepository = SmsBridgeApp.instance.smsRepository
+    private val _connectedDevices = MutableStateFlow<List<com.example.domain.model.ConnectedDevice>>(emptyList())
+    val connectedDevices: StateFlow<List<com.example.domain.model.ConnectedDevice>> = _connectedDevices.asStateFlow()
+
+    private val _selectedTargetDevice = MutableStateFlow<com.example.domain.model.ConnectedDevice?>(null)
+    val selectedTargetDevice: StateFlow<com.example.domain.model.ConnectedDevice?> = _selectedTargetDevice.asStateFlow()
+
     private val _peerName = MutableStateFlow("Paired Device")
     val peerName: StateFlow<String> = _peerName.asStateFlow()
 
@@ -75,6 +82,12 @@ class WalkieTalkieViewModel(
 
     private val _statusMessage = MutableStateFlow("Ready for walkie-talkie communication")
     val statusMessage: StateFlow<String> = _statusMessage.asStateFlow()
+
+    fun selectTargetDevice(device: com.example.domain.model.ConnectedDevice?) {
+        _selectedTargetDevice.value = device
+        _peerName.value = device?.clientDeviceName ?: "All Connected Devices"
+        _statusMessage.value = if (device != null) "Targeting ${device.clientDeviceName}" else "Broadcasting to all paired devices"
+    }
 
     // Active session observation jobs
     private var sessionObserverJob: Job? = null
@@ -101,6 +114,23 @@ class WalkieTalkieViewModel(
 
             val linkedName = preferencesRepository.linkedDeviceNameFlow.firstOrNull() ?: "Paired Device"
             _peerName.value = linkedName
+
+            if (role == UserRole.HOST && code.isNotBlank()) {
+                launch {
+                    smsRepository.observeConnectedDevices(code).collect { devices ->
+                        val active = devices.filter { it.active }
+                        _connectedDevices.value = active
+                        if (_selectedTargetDevice.value == null && active.isNotEmpty()) {
+                            if (active.size == 1) {
+                                _selectedTargetDevice.value = active.first()
+                                _peerName.value = active.first().clientDeviceName
+                            } else {
+                                _peerName.value = "${active.size} Devices (All Broadcast)"
+                            }
+                        }
+                    }
+                }
+            }
 
             Log.d(TAG, "Initialized: UID=$uid, HostCode=$code, Peer=$linkedName")
             startListeningForIncomingCalls(code, uid)

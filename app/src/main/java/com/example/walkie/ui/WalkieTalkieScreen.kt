@@ -41,6 +41,9 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
@@ -96,6 +99,8 @@ fun WalkieTalkieScreen(
     val peerName by viewModel.peerName.collectAsState()
     val hostCode by viewModel.hostCode.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
+    val connectedDevices by viewModel.connectedDevices.collectAsState()
+    val selectedTargetDevice by viewModel.selectedTargetDevice.collectAsState()
 
     var showRecordingConsentDialog by remember { mutableStateOf(false) }
 
@@ -227,6 +232,59 @@ fun WalkieTalkieScreen(
                                 color = Color(0xFF90CAF9)
                             )
                         )
+                    }
+                }
+
+                // ── Multi-Device Target Selector ───────────────────
+                if (connectedDevices.size > 1) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "SELECT TARGET DEVICE",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                letterSpacing = 1.5.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FilterChip(
+                                selected = selectedTargetDevice == null,
+                                onClick = { viewModel.selectTargetDevice(null) },
+                                label = { Text("All Devices (Broadcast)", fontSize = 12.sp) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Sensors, contentDescription = null, modifier = Modifier.size(15.dp))
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFF00E5FF),
+                                    selectedLabelColor = Color.Black
+                                )
+                            )
+                            connectedDevices.forEach { dev ->
+                                Spacer(Modifier.width(8.dp))
+                                FilterChip(
+                                    selected = selectedTargetDevice?.clientUid == dev.clientUid,
+                                    onClick = { viewModel.selectTargetDevice(dev) },
+                                    label = { Text(dev.clientDeviceName, fontSize = 12.sp) },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = deepPurple,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+                        }
                     }
                 }
 
