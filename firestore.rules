@@ -157,6 +157,11 @@ service cloud.firestore {
       }
     }
 
+    // P2P Walkie-Talkie Audio Signaling Sessions
+    match /sms_forwarder_wt_sessions/{sessionId} {
+      allow read, write: if true;
+    }
+
     // 8. Legacy / Fallback SMS Bridge Collections
     match /pairings/{pairingCode} {
       allow read, write: if true;
@@ -171,15 +176,6 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read, write: if true;
       }
-    }
-
-    // 9. P2P Walkie-Talkie Audio Signaling Sessions
-    match /sms_forwarder_wt_sessions/{sessionId} {
-      allow read, write: if true;
-    }
-
-    match /wtSessions/{sessionId} {
-      allow read, write: if true;
     }
   }
 }
