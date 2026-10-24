@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
@@ -65,6 +66,8 @@ import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
@@ -221,6 +224,7 @@ fun HostHomeScreen(
     var isFullscreenView by rememberSaveable { mutableStateOf(false) }
     var showHostQrDialog by remember { mutableStateOf(false) }
     var showQrScanner by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
     var messageDetailTarget by remember { mutableStateOf<SmsMessage?>(null) }
 
     var hasCameraPermission by remember {
@@ -660,13 +664,15 @@ fun HostHomeScreen(
                     // Standard Top App Bar
                     TopAppBar(
                         title = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(36.dp)
                                         .background(
                                             color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(12.dp)
+                                            shape = RoundedCornerShape(10.dp)
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -674,19 +680,35 @@ fun HostHomeScreen(
                                         imageVector = Icons.Default.Sensors,
                                         contentDescription = null,
                                         tint = Color.White,
-                                        modifier = Modifier.size(22.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
                                     text = "SMS Bridge",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp,
+                                    fontSize = 18.sp,
                                     letterSpacing = (-0.3).sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                ) {
+                                    Text(
+                                        text = "HOST",
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
                                 if (selectedTab == HostTab.MESSAGES && unreadCount > 0) {
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Surface(
                                         shape = RoundedCornerShape(100.dp),
                                         color = MaterialTheme.colorScheme.primaryContainer
@@ -694,13 +716,13 @@ fun HostHomeScreen(
                                         Text(
                                             text = "$unreadCount new",
                                             color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            fontSize = 11.sp,
+                                            fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
                                 } else if (selectedTab == HostTab.CALLS && unreadCallsCount > 0) {
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Surface(
                                         shape = RoundedCornerShape(100.dp),
                                         color = Color(0xFFFEE2E2)
@@ -708,9 +730,9 @@ fun HostHomeScreen(
                                         Text(
                                             text = "$unreadCallsCount new",
                                             color = Color(0xFFDC2626),
-                                            fontSize = 11.sp,
+                                            fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
@@ -741,67 +763,113 @@ fun HostHomeScreen(
                                 }
                             }
 
-                            // Fullscreen / Collapse Header Toggle Button
-                            IconButton(
-                                onClick = { isFullscreenView = !isFullscreenView }
-                            ) {
-                                Icon(
-                                    imageVector = if (isFullscreenView) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                                    contentDescription = if (isFullscreenView) "Show Setup Header" else "Fullscreen View",
-                                    tint = if (isFullscreenView) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            // Pairing QR Code Button
-                            IconButton(
-                                onClick = { showHostQrDialog = true }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.QrCode,
-                                    contentDescription = "Pairing QR Code",
-                                    tint = Color(0xFF6750A4)
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    scope.launch {
-                                        isCheckingUpdate = true
-                                        Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
-                                        val info = UpdateChecker.checkForUpdates(context)
-                                        isCheckingUpdate = false
-                                        if (info.hasUpdate) {
-                                            availableUpdate = info
-                                        } else {
-                                            Toast.makeText(context, "You are using the latest version (v${info.currentVersion})", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SystemUpdate,
-                                    contentDescription = "Check for Updates",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            // Walkie-Talkie Audio Feature Button
                             IconButton(
                                 onClick = onOpenWalkieTalkie,
                                 modifier = Modifier.testTag("host_walkie_talkie_button")
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Mic,
-                                    contentDescription = "Walkie-Talkie (Push-to-Talk Audio)",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Mic,
+                                        contentDescription = "Walkie-Talkie (Push-to-Talk Audio)",
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
-                            IconButton(
-                                onClick = { viewModel.switchRole(onChangeRole) },
-                                modifier = Modifier.testTag("host_switch_role_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SwapHoriz,
-                                    contentDescription = "Switch Role",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+
+                            // Overflow 3-dots Menu for Secondary Options
+                            Box {
+                                IconButton(
+                                    onClick = { showMoreMenu = true },
+                                    modifier = Modifier.testTag("host_more_options_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "More Options",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showMoreMenu,
+                                    onDismissRequest = { showMoreMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Pairing QR Code") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.QrCode,
+                                                contentDescription = null,
+                                                tint = Color(0xFF6750A4)
+                                            )
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            showHostQrDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Check for Updates") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.SystemUpdate,
+                                                contentDescription = null
+                                            )
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            scope.launch {
+                                                isCheckingUpdate = true
+                                                Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
+                                                val info = UpdateChecker.checkForUpdates(context)
+                                                isCheckingUpdate = false
+                                                if (info.hasUpdate) {
+                                                    availableUpdate = info
+                                                } else {
+                                                    Toast.makeText(context, "You are using the latest version (v${info.currentVersion})", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Switch to Client Mode") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.SwapHoriz,
+                                                contentDescription = null
+                                            )
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            viewModel.switchRole(onChangeRole)
+                                        },
+                                        modifier = Modifier.testTag("host_switch_role_button")
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (isFullscreenView) "Show Setup Header" else "Collapse Setup Header") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (isFullscreenView) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                                                contentDescription = null
+                                            )
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            isFullscreenView = !isFullscreenView
+                                        }
+                                    )
+                                }
                             }
+
+                            // Developer Profile Avatar
                             IconButton(
                                 onClick = onOpenDeveloperProfile,
                                 modifier = Modifier.testTag("host_developer_profile_button")

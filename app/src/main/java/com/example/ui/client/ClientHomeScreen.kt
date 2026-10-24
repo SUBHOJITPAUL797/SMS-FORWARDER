@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -48,8 +49,11 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.SimCard
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
@@ -166,6 +170,7 @@ fun ClientHomeScreen(
     var showQuotaSettingsDialog by remember { mutableStateOf(false) }
 
     var isServiceRunning by remember { mutableStateOf(true) }
+    var showMoreMenu by remember { mutableStateOf(false) }
     var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var showSyncScopeDialog by remember { mutableStateOf(false) }
@@ -743,47 +748,86 @@ fun ClientHomeScreen(
                         }
                     },
                     actions = {
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    isCheckingUpdate = true
-                                    Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
-                                    val info = UpdateChecker.checkForUpdates(context)
-                                    isCheckingUpdate = false
-                                    if (info.hasUpdate) {
-                                        availableUpdate = info
-                                    } else {
-                                        Toast.makeText(context, "You are using the latest version (v${info.currentVersion})", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SystemUpdate,
-                                contentDescription = "Check for Updates",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        // Walkie-Talkie Audio Feature Button
                         IconButton(
                             onClick = onOpenWalkieTalkie,
                             modifier = Modifier.testTag("client_walkie_talkie_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Mic,
-                                contentDescription = "Walkie-Talkie (Push-to-Talk Audio)",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Walkie-Talkie (Push-to-Talk Audio)",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
-                        IconButton(
-                            onClick = { viewModel.switchRole(onChangeRole) },
-                            modifier = Modifier.testTag("client_switch_role_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SwapHoriz,
-                                contentDescription = "Switch Role",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+
+                        // Overflow 3-dots Menu
+                        Box {
+                            IconButton(
+                                onClick = { showMoreMenu = true },
+                                modifier = Modifier.testTag("client_more_options_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More Options",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showMoreMenu,
+                                onDismissRequest = { showMoreMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Check for Updates") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.SystemUpdate,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        scope.launch {
+                                            isCheckingUpdate = true
+                                            Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
+                                            val info = UpdateChecker.checkForUpdates(context)
+                                            isCheckingUpdate = false
+                                            if (info.hasUpdate) {
+                                                availableUpdate = info
+                                            } else {
+                                                Toast.makeText(context, "You are using the latest version (v${info.currentVersion})", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Switch to Host Mode") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.SwapHoriz,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        viewModel.switchRole(onChangeRole)
+                                    },
+                                    modifier = Modifier.testTag("client_switch_role_button")
+                                )
+                            }
                         }
+
+                        // Developer Profile Avatar
                         IconButton(
                             onClick = onOpenDeveloperProfile,
                             modifier = Modifier.testTag("client_developer_profile_button")
