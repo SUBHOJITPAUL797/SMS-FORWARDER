@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,36 +34,47 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,12 +87,17 @@ fun WalkieTalkieScreen(
     viewModel: WalkieTalkieViewModel,
     onNavigateBack: () -> Unit
 ) {
-    val context = LocalContext.current
     val callState by viewModel.callState.collectAsState()
+    val activeSession by viewModel.activeSession.collectAsState()
     val hasMicPermission by viewModel.hasMicPermission.collectAsState()
     val isTalking by viewModel.isTalking.collectAsState()
+    val isFullDuplex by viewModel.isFullDuplex.collectAsState()
+    val isRecording by viewModel.isRecording.collectAsState()
     val peerName by viewModel.peerName.collectAsState()
+    val hostCode by viewModel.hostCode.collectAsState()
     val statusMessage by viewModel.statusMessage.collectAsState()
+
+    var showRecordingConsentDialog by remember { mutableStateOf(false) }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -124,7 +141,7 @@ fun WalkieTalkieScreen(
                         Icon(
                             Icons.Default.RadioButtonChecked,
                             contentDescription = null,
-                            tint = accentGreen,
+                            tint = if (callState == WtCallState.ACTIVE) accentGreen else Color(0xFFFFA000),
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(8.dp))
@@ -139,6 +156,24 @@ fun WalkieTalkieScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (callState == WtCallState.ACTIVE) {
+                        IconButton(onClick = {
+                            if (isRecording) {
+                                viewModel.toggleRecording()
+                            } else {
+                                showRecordingConsentDialog = true
+                            }
+                        }) {
+                            Icon(
+                                Icons.Default.FiberManualRecord,
+                                contentDescription = "Recording",
+                                tint = if (isRecording) accentRed else Color.Gray,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -164,56 +199,53 @@ fun WalkieTalkieScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-
-                // ── Security Badge ──────────────────────────────────
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF0D2818)
-                    ),
-                    shape = RoundedCornerShape(12.dp)
+                // ── Channel Badge ──────────────────────────────────
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = surfaceGlass,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2E2E4A))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Default.Lock,
+                            Icons.Default.Shield,
                             contentDescription = null,
-                            tint = accentGreen,
-                            modifier = Modifier.size(16.dp)
+                            tint = Color(0xFF90CAF9),
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(6.dp))
                         Text(
-                            "End-to-end encrypted · P2P audio · No server relay",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = accentGreen
+                            text = if (hostCode.isNotBlank()) "Channel: $hostCode" else "Standalone Channel",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF90CAF9)
+                            )
                         )
                     }
                 }
 
-                // ── Connection Status Card ──────────────────────────
+                // ── Status & Device Card ───────────────────────────
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = surfaceGlass.copy(alpha = 0.7f)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
+                    colors = CardDefaults.cardColors(containerColor = surfaceGlass),
+                    shape = RoundedCornerShape(24.dp),
+                    elevation = CardDefaults.cardElevation(8.dp)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
+                            .padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Peer avatar ring
+                        // Profile Avatar with dynamic state rings
                         Box(contentAlignment = Alignment.Center) {
-                            // Outer pulse ring (only when active/talking)
                             if (callState == WtCallState.ACTIVE && isTalking) {
                                 Box(
                                     modifier = Modifier
@@ -238,7 +270,7 @@ fun WalkieTalkieScreen(
                                             WtCallState.ACTIVE -> accentGreen
                                             WtCallState.CALLING -> Color(0xFFFFA000)
                                             WtCallState.RINGING -> accentGreen
-                                            else -> Color.Gray
+                                            WtCallState.IDLE, WtCallState.ENDED -> Color.Gray
                                         },
                                         shape = CircleShape
                                     ),
@@ -264,8 +296,8 @@ fun WalkieTalkieScreen(
                         Text(
                             text = when (callState) {
                                 WtCallState.IDLE -> "Ready to connect"
-                                WtCallState.CALLING -> "📞 Calling…"
-                                WtCallState.RINGING -> "📲 Incoming call"
+                                WtCallState.CALLING -> "📞 Calling paired device…"
+                                WtCallState.RINGING -> "📲 Incoming call!"
                                 WtCallState.ACTIVE -> if (isTalking) "🎙 Transmitting…" else "🔊 Listening…"
                                 WtCallState.ENDED -> "Call ended"
                             },
@@ -273,7 +305,7 @@ fun WalkieTalkieScreen(
                             color = when (callState) {
                                 WtCallState.ACTIVE -> accentGreen
                                 WtCallState.CALLING, WtCallState.RINGING -> Color(0xFFFFA000)
-                                else -> Color.Gray
+                                WtCallState.IDLE, WtCallState.ENDED -> Color.Gray
                             },
                             fontWeight = FontWeight.Medium
                         )
@@ -286,10 +318,62 @@ fun WalkieTalkieScreen(
                                 textAlign = TextAlign.Center
                             )
                         }
+
+                        if (isRecording) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = accentRed.copy(alpha = 0.15f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, accentRed.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.FiberManualRecord, contentDescription = null, tint = accentRed, modifier = Modifier.size(10.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Recording Active (Local)", style = MaterialTheme.typography.labelSmall, color = accentRed)
+                                }
+                            }
+                        }
                     }
                 }
 
-                // ── PTT Button (main interaction) ───────────────────
+                // ── Mode Switcher (Full-Duplex vs Half-Duplex PTT) ──
+                if (callState == WtCallState.ACTIVE) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilterChip(
+                            selected = !isFullDuplex,
+                            onClick = { if (isFullDuplex) viewModel.toggleFullDuplex() },
+                            label = { Text("Push-to-Talk (Hold)") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Hearing, contentDescription = null, modifier = Modifier.size(16.dp))
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = deepPurple,
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        FilterChip(
+                            selected = isFullDuplex,
+                            onClick = { if (!isFullDuplex) viewModel.toggleFullDuplex() },
+                            label = { Text("Hands-Free Mode") },
+                            leadingIcon = {
+                                Icon(Icons.Default.RecordVoiceOver, contentDescription = null, modifier = Modifier.size(16.dp))
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = accentGreen,
+                                selectedLabelColor = Color.Black
+                            )
+                        )
+                    }
+                }
+
+                // ── Push-To-Talk Button ─────────────────────────────
                 AnimatedVisibility(
                     visible = callState == WtCallState.ACTIVE,
                     enter = fadeIn(),
@@ -297,42 +381,62 @@ fun WalkieTalkieScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            "HOLD TO TALK",
+                            if (isFullDuplex) "HANDS-FREE TWO-WAY AUDIO" else "HOLD TO TALK",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 letterSpacing = 2.sp,
-                                color = Color.Gray,
+                                color = if (isTalking) accentGreen else Color.Gray,
                                 fontWeight = FontWeight.Bold
                             )
                         )
                         Spacer(Modifier.height(12.dp))
-                        // Phase 3 will upgrade this to a proper press-and-hold detector
-                        Surface(
+
+                        Box(
                             modifier = Modifier
                                 .size(if (isTalking) 140.dp else 120.dp)
-                                .clip(CircleShape),
-                            color = if (isTalking) accentGreen else deepPurple,
-                            shadowElevation = if (isTalking) 16.dp else 4.dp,
-                            onClick = { /* Phase 3: pointerInput holdToTalk */ }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Mic,
-                                    contentDescription = "Push to Talk",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(52.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isTalking) accentGreen else deepPurple
                                 )
-                            }
+                                .border(
+                                    width = 3.dp,
+                                    color = if (isTalking) Color.White else deepPurple.copy(alpha = 0.5f),
+                                    shape = CircleShape
+                                )
+                                .pointerInput(isFullDuplex) {
+                                    if (!isFullDuplex) {
+                                        detectTapGestures(
+                                            onPress = {
+                                                viewModel.onPttDown()
+                                                tryAwaitRelease()
+                                                viewModel.onPttUp()
+                                            }
+                                        )
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isTalking) Icons.Default.Mic else Icons.Default.MicOff,
+                                contentDescription = "Push to Talk Button",
+                                tint = if (isTalking) Color.Black else Color.White,
+                                modifier = Modifier.size(52.dp)
+                            )
                         }
+
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            if (isTalking) "Speaking…" else "Press & hold mic to talk",
+                            text = when {
+                                isFullDuplex -> "Mic open continuously (two-way)"
+                                isTalking -> "Transmitting speech…"
+                                else -> "Hold mic button to speak"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isTalking) accentGreen else Color.Gray
                         )
                     }
                 }
 
-                // ── Call / End Call Controls ────────────────────────
+                // ── Call / Answer / End Call Controls ──────────────
                 when (callState) {
                     WtCallState.IDLE, WtCallState.ENDED -> {
                         if (!hasMicPermission) {
@@ -415,14 +519,16 @@ fun WalkieTalkieScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Button(
-                                onClick = { viewModel.answerCall("") },
+                                onClick = {
+                                    activeSession?.let { viewModel.answerCall(it.sessionId) }
+                                },
                                 modifier = Modifier.weight(1f).height(56.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = accentGreen),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
                                 Icon(Icons.Default.Call, contentDescription = null, tint = Color.Black)
                                 Spacer(Modifier.width(6.dp))
-                                Text("Answer", color = Color.Black)
+                                Text("Answer", color = Color.Black, fontWeight = FontWeight.Bold)
                             }
                             FilledTonalButton(
                                 onClick = { viewModel.endCall() },
@@ -457,8 +563,6 @@ fun WalkieTalkieScreen(
                             Text("End Call", style = MaterialTheme.typography.labelLarge)
                         }
                     }
-
-                    else -> {}
                 }
 
                 // ── Info Card ───────────────────────────────────────
@@ -471,14 +575,22 @@ fun WalkieTalkieScreen(
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Wifi, contentDescription = null,
-                                modifier = Modifier.size(16.dp), tint = Color(0xFF90CAF9))
+                            Icon(
+                                Icons.Default.Wifi,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFF90CAF9)
+                            )
                             Spacer(Modifier.width(8.dp))
-                            Text("P2P via WebRTC · DTLS-SRTP encrypted",
-                                style = MaterialTheme.typography.bodySmall, color = Color(0xFF90CAF9))
+                            Text(
+                                "Direct P2P WebRTC · DTLS-SRTP Media Transport",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF90CAF9),
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                         Text(
-                            "Audio travels directly between devices — no audio data is stored on any server.",
+                            "Audio streams directly peer-to-peer over your local network or internet with end-to-end encryption. No audio data ever touches Firebase.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.Gray,
                             lineHeight = 18.sp
@@ -489,5 +601,36 @@ fun WalkieTalkieScreen(
                 Spacer(Modifier.height(24.dp))
             }
         }
+    }
+
+    // ── Explicit Audio Recording Consent Dialog ─────────────
+    if (showRecordingConsentDialog) {
+        AlertDialog(
+            onDismissRequest = { showRecordingConsentDialog = false },
+            title = { Text("Consent to Record Audio") },
+            text = {
+                Text(
+                    "Do you consent to record this Walkie-Talkie session? " +
+                    "Audio will be saved locally on your device in standard M4A format. " +
+                    "Both parties must be aware when recording is active."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRecordingConsentDialog = false
+                        viewModel.toggleRecording()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = deepPurple)
+                ) {
+                    Text("I Consent & Start Recording")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRecordingConsentDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

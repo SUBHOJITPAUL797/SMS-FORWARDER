@@ -101,6 +101,12 @@ class WalkieTalkieRepository(firestore: FirebaseFirestore) {
         signalingSource.observeIncomingCalls(receiverUid)
 
     /**
+     * Observe incoming calls for a shared hostCode.
+     */
+    fun observeIncomingCallsForHostCode(hostCode: String, myUid: String): Flow<List<WtSession>> =
+        signalingSource.observeIncomingCallsForHostCode(hostCode, myUid)
+
+    /**
      * Clean up the Firestore session document after the call ends.
      */
     suspend fun cleanupSession(sessionId: String) {

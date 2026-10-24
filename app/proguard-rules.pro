@@ -12,3 +12,8 @@
 # Coroutines & Room
 -keep class androidx.room.** { *; }
 -dontwarn androidx.room.**
+
+# WebRTC (Native JNI)
+-keep class org.webrtc.** { *; }
+-dontwarn org.webrtc.**
+-keep class com.example.walkie.** { *; }

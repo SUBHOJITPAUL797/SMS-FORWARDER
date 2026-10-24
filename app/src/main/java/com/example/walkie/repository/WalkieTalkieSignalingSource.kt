@@ -169,6 +169,30 @@ class WalkieTalkieSignalingSource(private val firestore: FirebaseFirestore) {
     }
 
     /**
+     * Observes incoming calls targeting a shared hostCode.
+     * Allows paired devices to call each other instantly.
+     */
+    fun observeIncomingCallsForHostCode(hostCode: String, myUid: String): Flow<List<WtSession>> = callbackFlow {
+        val listener: ListenerRegistration = firestore
+            .collection(COLLECTION_WT_SESSIONS)
+            .whereEqualTo("hostCode", hostCode)
+            .whereEqualTo("status", WtSessionStatus.CALLING.key)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Error observing incoming calls for hostCode $hostCode", error)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val sessions = snapshot?.documents
+                    ?.mapNotNull { doc -> doc.data?.let { WtSession.fromMap(it) } }
+                    ?.filter { it.initiatorUid != myUid }
+                    ?: emptyList()
+                trySend(sessions)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    /**
      * Deletes a session document after a call ends.
      */
     suspend fun deleteSession(sessionId: String) {

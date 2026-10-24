@@ -27,7 +27,9 @@ class WalkieTalkieService : Service() {
     companion object {
         private const val TAG = "WalkieTalkieService"
         const val CHANNEL_ID = "walkie_talkie_channel"
+        const val CALL_ALERT_CHANNEL_ID = "walkie_call_alerts"
         const val NOTIFICATION_ID = 1002
+        const val INCOMING_CALL_NOTIF_ID = 1003
 
         const val ACTION_START = "com.example.walkie.ACTION_START"
         const val ACTION_STOP = "com.example.walkie.ACTION_STOP"
@@ -48,6 +50,46 @@ class WalkieTalkieService : Service() {
             Intent(context, WalkieTalkieService::class.java).apply {
                 action = ACTION_STOP
             }
+
+        fun showIncomingCallNotification(context: Context, sessionId: String, callerName: String) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CALL_ALERT_CHANNEL_ID,
+                    "Walkie-Talkie Incoming Calls",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Alerts for incoming walkie-talkie audio calls"
+                    enableVibration(true)
+                }
+                manager.createNotificationChannel(channel)
+            }
+
+            val openIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val openPendingIntent = PendingIntent.getActivity(
+                context, 0, openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notif = NotificationCompat.Builder(context, CALL_ALERT_CHANNEL_ID)
+                .setContentTitle("📲 Incoming Walkie-Talkie Call")
+                .setContentText("Call from $callerName — tap to answer")
+                .setSmallIcon(com.example.R.drawable.ic_notification)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setAutoCancel(true)
+                .setContentIntent(openPendingIntent)
+                .build()
+
+            manager.notify(INCOMING_CALL_NOTIF_ID, notif)
+        }
+
+        fun cancelIncomingCallNotification(context: Context) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(INCOMING_CALL_NOTIF_ID)
+        }
     }
 
     private var currentSessionId: String? = null
@@ -130,7 +172,7 @@ class WalkieTalkieService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("🎙 Walkie-Talkie Active")
             .setContentText("Connected with $peer — tap to open")
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setSmallIcon(com.example.R.drawable.ic_notification)
             .setOngoing(true)
             .setContentIntent(openPendingIntent)
             .addAction(
