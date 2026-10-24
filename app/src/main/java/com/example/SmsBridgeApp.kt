@@ -21,6 +21,7 @@ import com.example.data.repository.PairingRepository
 import com.example.data.repository.SmsRepository
 import com.example.service.SmsBridgeFcmService
 import com.example.service.SmsBridgeService
+import com.example.walkie.repository.WalkieTalkieRepository
 import com.example.worker.ServiceWatchdogWorker
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
@@ -51,6 +52,8 @@ class SmsBridgeApp : Application() {
     lateinit var smsRepository: SmsRepository
         private set
     lateinit var callRepository: CallRepository
+        private set
+    lateinit var walkieTalkieRepository: WalkieTalkieRepository
         private set
 
     override fun onCreate() {
@@ -86,6 +89,7 @@ class SmsBridgeApp : Application() {
         pairingRepository = PairingRepository(authSource, firestoreSource, preferencesRepository)
         smsRepository = SmsRepository(this, database, firestoreSource, authSource, preferencesRepository)
         callRepository = CallRepository(this, database, firestoreSource, authSource, preferencesRepository)
+        walkieTalkieRepository = WalkieTalkieRepository(FirebaseFirestore.getInstance())
 
         // 3. Create Notification Channels
         createNotificationChannels()

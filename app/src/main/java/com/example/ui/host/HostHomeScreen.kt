@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
@@ -169,6 +170,7 @@ fun HostHomeScreen(
     viewModel: HostViewModel,
     onChangeRole: () -> Unit,
     onOpenDeveloperProfile: () -> Unit,
+    onOpenWalkieTalkie: () -> Unit = {},
     onLoggedOut: () -> Unit
 ) {
     val pagedMessages by viewModel.pagedMessages.collectAsStateWithLifecycle()
@@ -778,6 +780,16 @@ fun HostHomeScreen(
                                     imageVector = Icons.Default.SystemUpdate,
                                     contentDescription = "Check for Updates",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(
+                                onClick = onOpenWalkieTalkie,
+                                modifier = Modifier.testTag("host_walkie_talkie_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Walkie-Talkie (Push-to-Talk Audio)",
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                             IconButton(

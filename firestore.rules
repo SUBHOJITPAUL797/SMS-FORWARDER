@@ -172,5 +172,14 @@ service cloud.firestore {
         allow read, write: if true;
       }
     }
+
+    // 9. P2P Walkie-Talkie Audio Signaling Sessions
+    match /sms_forwarder_wt_sessions/{sessionId} {
+      allow read, write: if true;
+    }
+
+    match /wtSessions/{sessionId} {
+      allow read, write: if true;
+    }
   }
 }

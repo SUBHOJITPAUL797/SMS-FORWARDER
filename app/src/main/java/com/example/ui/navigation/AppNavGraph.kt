@@ -26,6 +26,8 @@ import com.example.ui.roleselect.RoleSelectScreen
 import com.example.ui.roleselect.RoleSelectViewModel
 import com.example.ui.splash.SplashScreen
 import com.example.ui.splash.SplashViewModel
+import com.example.walkie.ui.WalkieTalkieScreen
+import com.example.walkie.ui.WalkieTalkieViewModel
 
 @Composable
 fun AppNavGraph(
@@ -163,6 +165,9 @@ fun AppNavGraph(
                 onOpenDeveloperProfile = {
                     navController.navigate(Screen.DeveloperProfile.route)
                 },
+                onOpenWalkieTalkie = {
+                    navController.navigate(Screen.WalkieTalkie.route)
+                },
                 onLoggedOut = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
@@ -182,6 +187,9 @@ fun AppNavGraph(
                 onOpenDeveloperProfile = {
                     navController.navigate(Screen.DeveloperProfile.route)
                 },
+                onOpenWalkieTalkie = {
+                    navController.navigate(Screen.WalkieTalkie.route)
+                },
                 onLoggedOut = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
@@ -193,6 +201,17 @@ fun AppNavGraph(
         // Developer Profile Screen
         composable(Screen.DeveloperProfile.route) {
             DeveloperProfileScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // Walkie-Talkie Screen
+        composable(Screen.WalkieTalkie.route) {
+            val viewModel = remember { WalkieTalkieViewModel(app.walkieTalkieRepository) }
+            WalkieTalkieScreen(
+                viewModel = viewModel,
                 onNavigateBack = {
                     navController.popBackStack()
                 }

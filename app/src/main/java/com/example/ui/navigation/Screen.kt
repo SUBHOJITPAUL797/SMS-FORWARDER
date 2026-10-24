@@ -10,4 +10,5 @@ sealed class Screen(val route: String) {
     object HostHome : Screen("host_home")
     object ClientHome : Screen("client_home")
     object DeveloperProfile : Screen("developer_profile")
+    object WalkieTalkie : Screen("walkie_talkie")
 }

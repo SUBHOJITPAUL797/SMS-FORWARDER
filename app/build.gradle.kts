@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.smsbridge.v8k2p"
     minSdk = 24
     targetSdk = 36
-    versionCode = 32
-    versionName = "1.0.31"
+    versionCode = 33
+    versionName = "1.0.32"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -109,6 +109,7 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.retrofit)
   implementation(libs.zxing.core)
+  implementation(libs.stream.webrtc.android)
   implementation(libs.androidx.camera.camera2)
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)

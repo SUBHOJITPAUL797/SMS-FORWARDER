@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -136,6 +137,7 @@ fun ClientHomeScreen(
     viewModel: ClientViewModel,
     onChangeRole: () -> Unit,
     onOpenDeveloperProfile: () -> Unit,
+    onOpenWalkieTalkie: () -> Unit = {},
     onLoggedOut: () -> Unit
 ) {
     val context = LocalContext.current
@@ -760,6 +762,16 @@ fun ClientHomeScreen(
                                 imageVector = Icons.Default.SystemUpdate,
                                 contentDescription = "Check for Updates",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = onOpenWalkieTalkie,
+                            modifier = Modifier.testTag("client_walkie_talkie_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Walkie-Talkie (Push-to-Talk Audio)",
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                         IconButton(
