@@ -9,8 +9,25 @@ data class ConnectedDevice(
     val clientDeviceName: String,
     val pairedAt: Long,
     val active: Boolean,
-    val lastSeenAt: Long
+    val lastSeenAt: Long,
+    val lastLocation: Map<String, Any>? = null,
+    val locationRequestedAt: Long = 0L
 ) {
+    val mapsUrl: String?
+        get() = lastLocation?.get("mapsUrl") as? String
+
+    val accuracy: Float?
+        get() = (lastLocation?.get("accuracy") as? Number)?.toFloat()
+
+    val batteryPercentage: Int?
+        get() = (lastLocation?.get("battery") as? Number)?.toInt()
+
+    val isCharging: Boolean?
+        get() = lastLocation?.get("isCharging") as? Boolean
+
+    val locationTimestamp: Long?
+        get() = (lastLocation?.get("timestamp") as? Number)?.toLong()
+
     /** Human-readable "last seen" string */
     fun lastSeenLabel(): String {
         if (lastSeenAt <= 0L) return "Never"
@@ -24,6 +41,7 @@ data class ConnectedDevice(
     }
 
     companion object {
+        @Suppress("UNCHECKED_CAST")
         fun fromMap(data: Map<String, Any>): ConnectedDevice? {
             val clientUid = data["clientUid"] as? String ?: return null
             return ConnectedDevice(
@@ -31,7 +49,9 @@ data class ConnectedDevice(
                 clientDeviceName = data["clientDeviceName"] as? String ?: "Unknown Device",
                 pairedAt = (data["pairedAt"] as? Number)?.toLong() ?: 0L,
                 active = data["active"] as? Boolean ?: true,
-                lastSeenAt = (data["lastSeenAt"] as? Number)?.toLong() ?: 0L
+                lastSeenAt = (data["lastSeenAt"] as? Number)?.toLong() ?: 0L,
+                lastLocation = data["lastLocation"] as? Map<String, Any>,
+                locationRequestedAt = (data["locationRequestedAt"] as? Number)?.toLong() ?: 0L
             )
         }
     }

@@ -566,4 +566,19 @@ class HostViewModel(
             }
         }
     }
+
+    /**
+     * Sends a real-time command to the client device to query its live GPS location.
+     */
+    fun requestClientLocation(clientUid: String, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val code = _hostCode.value
+            if (code.isNotEmpty()) {
+                val res = smsRepository.requestClientLocation(code, clientUid)
+                onResult(res.isSuccess)
+            } else {
+                onResult(false)
+            }
+        }
+    }
 }

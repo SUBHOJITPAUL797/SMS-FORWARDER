@@ -10,6 +10,7 @@ import com.example.SmsBridgeApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
 
@@ -77,6 +78,52 @@ class SmsReceiver : BroadcastReceiver() {
             try {
                 val app = context.applicationContext as? SmsBridgeApp
                 val smsRepo = app?.smsRepository
+                val prefs = app?.preferencesRepository
+
+                // 1. Check if incoming SMS is a remote location trigger
+                if (prefs != null) {
+                    val isLocEnabled = prefs.isRemoteLocationEnabledFlow.firstOrNull() ?: true
+                    val customKeyword = prefs.locationTriggerKeywordFlow.firstOrNull() ?: "#LOC"
+                    if (isLocEnabled && com.example.util.LocationUtils.isLocationTrigger(fullBody, customKeyword)) {
+                        Log.i(TAG, "Location trigger detected from $sender via SMS: $fullBody")
+                        if (com.example.util.LocationUtils.hasLocationPermission(context)) {
+                            val loc = com.example.util.LocationUtils.getCurrentLocation(context)
+                            val bat = com.example.util.LocationUtils.getBatteryInfo(context)
+                            val clientName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+                            val replyText = com.example.util.LocationUtils.formatLocationSms(loc, bat, clientName)
+
+                            // Send cellular SMS reply back to requester
+                            val simSendRes = com.example.util.SimUtils.sendCellularSms(
+                                context = context,
+                                subscriptionId = null,
+                                destinationNumber = sender,
+                                messageText = replyText
+                            )
+                            Log.i(TAG, "Sent cellular SMS location reply to $sender: success=${simSendRes.isSuccess}")
+
+                            // Also upload to Host feed if linked
+                            val hostUid = prefs.linkedUidFlow.firstOrNull()
+                            val clientUid = prefs.getOrCreateDeviceUid()
+                            if (!hostUid.isNullOrEmpty() && smsRepo != null) {
+                                val locMsg = com.example.domain.model.SmsMessage(
+                                    messageId = "sms_loc_${System.currentTimeMillis()}",
+                                    sender = "📍 SMS Location ($sender)",
+                                    body = replyText,
+                                    receivedAt = System.currentTimeMillis(),
+                                    uploadedAt = System.currentTimeMillis(),
+                                    clientUid = clientUid,
+                                    clientDeviceName = clientName,
+                                    read = false
+                                )
+                                smsRepo.uploadPendingMessageDirect(hostUid, locMsg)
+                            }
+                        } else {
+                            Log.w(TAG, "Location permission missing, cannot reply to SMS location trigger")
+                        }
+                    }
+                }
+
+                // 2. Normal SMS processing (Room DB + Forwarding)
                 if (smsRepo != null) {
                     smsRepo.handleIncomingSms(
                         messageId = messageId,

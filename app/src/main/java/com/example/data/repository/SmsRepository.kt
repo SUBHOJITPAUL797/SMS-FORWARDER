@@ -581,4 +581,20 @@ class SmsRepository(
         // Delete from Firestore cloud DB
         return firestoreSource.deleteMultipleSms(hostUid, messageIds)
     }
+
+    suspend fun requestClientLocation(hostCode: String, clientUid: String): Result<Unit> {
+        return firestoreSource.requestClientLocation(hostCode, clientUid)
+    }
+
+    suspend fun updateClientLocation(
+        hostCode: String,
+        clientUid: String,
+        locationData: Map<String, Any>
+    ): Result<Unit> {
+        return firestoreSource.updateClientLocation(hostCode, clientUid, locationData)
+    }
+
+    suspend fun uploadPendingMessageDirect(hostUid: String, message: SmsMessage): Result<Unit> {
+        return firestoreSource.uploadSms(hostUid, message)
+    }
 }

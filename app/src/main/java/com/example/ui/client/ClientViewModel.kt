@@ -155,6 +155,20 @@ class ClientViewModel(
         viewModelScope.launch { prefs.setDualSimRolloverEnabled(enabled) }
     }
 
+    val isRemoteLocationEnabled: StateFlow<Boolean> = prefs.isRemoteLocationEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val locationTriggerKeyword: StateFlow<String> = prefs.locationTriggerKeywordFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "#LOC")
+
+    fun setRemoteLocationEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setRemoteLocationEnabled(enabled) }
+    }
+
+    fun setLocationTriggerKeyword(keyword: String) {
+        viewModelScope.launch { prefs.setLocationTriggerKeyword(keyword) }
+    }
+
     fun sendTestFallbackSms(onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             val destination = prefs.fallbackDestinationNumberFlow.firstOrNull()?.trim() ?: ""

@@ -64,6 +64,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -1261,54 +1262,147 @@ fun HostHomeScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             connectedDevices.filter { it.active }.forEach { device ->
-                                Row(
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 3.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                        .padding(vertical = 4.dp)
                                 ) {
                                     Row(
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PhoneAndroid,
-                                            contentDescription = null,
-                                            tint = Color(0xFF6750A4),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Column {
-                                            Text(
-                                                text = device.clientDeviceName,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PhoneAndroid,
+                                                contentDescription = null,
+                                                tint = Color(0xFF6750A4),
+                                                modifier = Modifier.size(16.dp)
                                             )
-                                            Text(
-                                                text = "Last seen: ${device.lastSeenLabel()}",
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Column {
+                                                Text(
+                                                    text = device.clientDeviceName,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                val batText = device.batteryPercentage?.let { " · 🔋 $it%" } ?: ""
+                                                Text(
+                                                    text = "Last seen: ${device.lastSeenLabel()}$batText",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = Color(0xFFE0F2FE),
+                                                modifier = Modifier.clickable {
+                                                    Toast.makeText(context, "Requesting live location from ${device.clientDeviceName}...", Toast.LENGTH_SHORT).show()
+                                                    viewModel.requestClientLocation(device.clientUid) { success ->
+                                                        if (!success) {
+                                                            Toast.makeText(context, "Failed to send location request", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.LocationOn,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF0284C7),
+                                                        modifier = Modifier.size(12.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(
+                                                        text = "Location",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF0284C7)
+                                                    )
+                                                }
+                                            }
+
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = Color(0xFFFEE2E2),
+                                                modifier = Modifier.clickable {
+                                                    viewModel.disconnectClient(device.clientUid)
+                                                }
+                                            ) {
+                                                Text(
+                                                    text = "Disconnect",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFDC2626),
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
                                         }
                                     }
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = Color(0xFFFEE2E2),
-                                        modifier = Modifier.clickable {
-                                            viewModel.disconnectClient(device.clientUid)
+
+                                    // If coordinates were received, display 1-tap Google Maps pill
+                                    if (!device.mapsUrl.isNullOrBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFFF0FDF4),
+                                            border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    try {
+                                                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(device.mapsUrl)).apply {
+                                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                        }
+                                                        context.startActivity(mapIntent)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "Cannot open map: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.LocationOn,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF16A34A),
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    val accText = device.accuracy?.toInt()?.let { " (±${it}m)" } ?: ""
+                                                    Text(
+                                                        text = "Live GPS Coordinates$accText",
+                                                        fontSize = 11.sp,
+                                                        color = Color(0xFF15803D),
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "Open Maps ↗",
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF16A34A),
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
-                                    ) {
-                                        Text(
-                                            text = "Disconnect",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFDC2626),
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        )
                                     }
                                 }
                             }
@@ -2293,6 +2387,71 @@ private fun SmsCardItem(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Copy OTP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                // Prominent Location / Google Maps Container if message contains Google Maps link
+                val hasLocation = remember(message.body) {
+                    message.body.contains("maps.google.com") || message.body.contains("goo.gl/maps") || message.body.contains("📍 Device Location")
+                }
+                if (hasLocation) {
+                    val mapsUrl = remember(message.body) {
+                        val regex = Regex("https?://[\\w./?=&,-]+")
+                        regex.findAll(message.body).map { it.value }.firstOrNull { it.contains("maps") } ?: ""
+                    }
+                    if (mapsUrl.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF0284C7).copy(alpha = 0.10f),
+                            border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(
+                                        imageVector = Icons.Default.LocationOn,
+                                        contentDescription = "Location",
+                                        tint = Color(0xFF0284C7),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "📍 Live GPS Location",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0369A1)
+                                    )
+                                }
+                                FilledTonalButton(
+                                    onClick = {
+                                        try {
+                                            val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl)).apply {
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                            itemContext.startActivity(mapIntent)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(itemContext, "Unable to open Maps: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF0284C7),
+                                        contentColor = Color.White
+                                    ),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("Open in Maps", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }

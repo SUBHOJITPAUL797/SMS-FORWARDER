@@ -43,6 +43,8 @@ class UserPreferencesRepository(private val context: Context) {
         val KEY_DAILY_SMS_RESET_DATE = stringPreferencesKey("daily_sms_reset_date")
         val KEY_DUAL_SIM_ROLLOVER_ENABLED = booleanPreferencesKey("dual_sim_rollover_enabled")
         val KEY_HOST_PHONE_NUMBER = stringPreferencesKey("host_phone_number")
+        val KEY_REMOTE_LOCATION_ENABLED = booleanPreferencesKey("remote_location_enabled")
+        val KEY_LOCATION_TRIGGER_KEYWORD = stringPreferencesKey("location_trigger_keyword")
     }
 
     val isCallForwardingEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
@@ -257,6 +259,26 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun setHostPhoneNumber(number: String) {
         dataStore.edit { preferences ->
             preferences[KEY_HOST_PHONE_NUMBER] = number.trim()
+        }
+    }
+
+    val isRemoteLocationEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[KEY_REMOTE_LOCATION_ENABLED] ?: true
+    }
+
+    val locationTriggerKeywordFlow: Flow<String> = dataStore.data.map { preferences ->
+        preferences[KEY_LOCATION_TRIGGER_KEYWORD] ?: "#LOC"
+    }
+
+    suspend fun setRemoteLocationEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[KEY_REMOTE_LOCATION_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setLocationTriggerKeyword(keyword: String) {
+        dataStore.edit { preferences ->
+            preferences[KEY_LOCATION_TRIGGER_KEYWORD] = keyword.trim().ifBlank { "#LOC" }
         }
     }
 

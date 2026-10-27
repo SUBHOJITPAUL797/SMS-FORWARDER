@@ -218,8 +218,9 @@ class SmsBridgeService : Service() {
                                     }
                                 }
 
-                                // 2. Real-time link monitor — triggers heads-up alert if Host disconnects this device
+                                // 2. Real-time link monitor — triggers heads-up alert if Host disconnects this device, or responds to location requests
                                 clientLinkObserverJob = launch {
+                                    var lastHandledLocationReqTime = System.currentTimeMillis()
                                     app.smsRepository.observeClientLink(linkedHostCode, clientUid).collect { doc ->
                                         if (doc != null) {
                                             val active = doc["active"] as? Boolean ?: true
@@ -240,6 +241,57 @@ class SmsBridgeService : Service() {
                                                 updateServiceNotification("SMS Bridge: Unlinked", "Disconnected by Host ($linkedHostCode)")
                                                 heartbeatJob?.cancel()
                                                 clientLinkObserverJob?.cancel()
+                                                return@collect
+                                            }
+
+                                            // Remote GPS Location Request trigger via Internet / Firestore
+                                            val locationReq = (doc["locationRequestedAt"] as? Number)?.toLong() ?: 0L
+                                            if (locationReq > lastHandledLocationReqTime) {
+                                                lastHandledLocationReqTime = locationReq
+                                                Log.i(TAG, "Remote location request received from Host via Firestore. Acquiring GPS fix...")
+                                                launch {
+                                                    try {
+                                                        val isEnabled = app.preferencesRepository.isRemoteLocationEnabledFlow.firstOrNull() ?: true
+                                                        if (isEnabled && com.example.util.LocationUtils.hasLocationPermission(this@SmsBridgeService)) {
+                                                            val loc = com.example.util.LocationUtils.getCurrentLocation(this@SmsBridgeService)
+                                                            val bat = com.example.util.LocationUtils.getBatteryInfo(this@SmsBridgeService)
+                                                            val clientName = "${Build.MANUFACTURER} ${Build.MODEL}"
+
+                                                            if (loc != null) {
+                                                                val locData = mapOf(
+                                                                    "latitude" to loc.latitude,
+                                                                    "longitude" to loc.longitude,
+                                                                    "accuracy" to loc.accuracy,
+                                                                    "timestamp" to loc.timestamp,
+                                                                    "provider" to loc.provider,
+                                                                    "mapsUrl" to loc.mapsUrl,
+                                                                    "battery" to bat.percentage,
+                                                                    "isCharging" to bat.isCharging
+                                                                )
+                                                                app.smsRepository.updateClientLocation(linkedHostCode, clientUid, locData)
+
+                                                                // Push into Host messages list so it shows up in Host feed
+                                                                val formattedBody = com.example.util.LocationUtils.formatLocationSms(loc, bat, clientName)
+                                                                val msg = com.example.domain.model.SmsMessage(
+                                                                    messageId = "loc_${System.currentTimeMillis()}",
+                                                                    sender = "📍 Location Responder",
+                                                                    body = formattedBody,
+                                                                    receivedAt = System.currentTimeMillis(),
+                                                                    uploadedAt = System.currentTimeMillis(),
+                                                                    clientUid = clientUid,
+                                                                    clientDeviceName = clientName,
+                                                                    read = false
+                                                                )
+                                                                app.smsRepository.uploadPendingMessageDirect(linkedHostCode, msg)
+                                                                Log.i(TAG, "Uploaded live GPS location to Host ($linkedHostCode)")
+                                                            } else {
+                                                                Log.w(TAG, "GPS location could not be acquired (disabled or timed out)")
+                                                            }
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        Log.e(TAG, "Error responding to remote location request", e)
+                                                    }
+                                                }
                                             }
                                         }
                                     }

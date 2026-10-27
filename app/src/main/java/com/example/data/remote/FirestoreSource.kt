@@ -322,6 +322,46 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
         }
     }
 
+    /**
+     * Sends a remote location request from Host to a specific Client device.
+     */
+    suspend fun requestClientLocation(hostCode: String, clientUid: String): Result<Unit> {
+        return try {
+            val linkId = "${hostCode}__${clientUid}"
+            firestore.collection(COLLECTION_LINKS).document(linkId)
+                .update(mapOf("locationRequestedAt" to System.currentTimeMillis()))
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting client location for $clientUid", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Pushes the latest acquired GPS location data and battery status from Client to Host.
+     */
+    suspend fun updateClientLocation(
+        hostCode: String,
+        clientUid: String,
+        locationData: Map<String, Any>
+    ): Result<Unit> {
+        return try {
+            val linkId = "${hostCode}__${clientUid}"
+            firestore.collection(COLLECTION_LINKS).document(linkId)
+                .update(
+                    mapOf(
+                        "lastLocation" to locationData,
+                        "lastSeenAt" to System.currentTimeMillis()
+                    )
+                ).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating client location for $clientUid", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun removePairingDoc(code: String) {
         try {
             firestore.collection(COLLECTION_PAIRINGS).document(code).delete().await()

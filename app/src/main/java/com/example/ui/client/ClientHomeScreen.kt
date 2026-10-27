@@ -57,6 +57,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.core.app.NotificationManagerCompat
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import com.example.ui.pairing.QrScannerOverlay
@@ -165,6 +167,10 @@ fun ClientHomeScreen(
     val dailySmsSentCountSim1 by viewModel.dailySmsSentCountSim1.collectAsStateWithLifecycle()
     val dailySmsSentCountSim2 by viewModel.dailySmsSentCountSim2.collectAsStateWithLifecycle()
     val isDualSimRolloverEnabled by viewModel.isDualSimRolloverEnabled.collectAsStateWithLifecycle()
+
+    val isRemoteLocationEnabled by viewModel.isRemoteLocationEnabled.collectAsStateWithLifecycle()
+    val locationTriggerKeyword by viewModel.locationTriggerKeyword.collectAsStateWithLifecycle()
+    var showLocationKeywordDialog by remember { mutableStateOf(false) }
 
     var showDestinationNumberDialog by remember { mutableStateOf(false) }
     var showQuotaSettingsDialog by remember { mutableStateOf(false) }
@@ -561,6 +567,60 @@ fun ClientHomeScreen(
         )
     }
 
+    // Remote Location Keyword Configuration Dialog
+    if (showLocationKeywordDialog) {
+        var tempKeyword by remember(locationTriggerKeyword) { mutableStateOf(locationTriggerKeyword) }
+        AlertDialog(
+            onDismissRequest = { showLocationKeywordDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Location Trigger Keyword", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "When an SMS (or WhatsApp message) starting with this keyword is received, this device acquires its live GPS fix and replies with a Google Maps link and battery percentage.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = tempKeyword,
+                        onValueChange = { tempKeyword = it.uppercase() },
+                        label = { Text("Command Keyword (Default: #LOC)") },
+                        placeholder = { Text("#LOC") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Tip: Messages starting with '#LOCATION' are also always recognized.",
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF64748B)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val clean = tempKeyword.trim().ifBlank { "#LOC" }
+                    viewModel.setLocationTriggerKeyword(clean)
+                    showLocationKeywordDialog = false
+                    Toast.makeText(context, "Location keyword set to: $clean", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLocationKeywordDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     // Permission states
     var availableSims by remember {
         mutableStateOf(com.example.util.SimUtils.getAvailableSims(context))
@@ -587,6 +647,26 @@ fun ClientHomeScreen(
                     ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         )
+    }
+
+    var hasLocationPermission by remember {
+        mutableStateOf(com.example.util.LocationUtils.hasLocationPermission(context))
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        hasLocationPermission = com.example.util.LocationUtils.hasLocationPermission(context)
+        if (hasLocationPermission) {
+            viewModel.setRemoteLocationEnabled(true)
+            Toast.makeText(context, "Location permission granted! Remote responder active.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Location permission needed for Remote GPS responder.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    var hasNotificationListenerAccess by remember {
+        mutableStateOf(NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName))
     }
 
     val callPermissionLauncher = rememberLauncherForActivityResult(
@@ -636,6 +716,7 @@ fun ClientHomeScreen(
         val hasContacts = perms[Manifest.permission.READ_CONTACTS] == true ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         hasCallPermissions = hasState && hasLog && hasContacts
+        hasLocationPermission = com.example.util.LocationUtils.hasLocationPermission(context)
 
         if (hasSmsPermission) {
             viewModel.toggleService(context, true)
@@ -653,7 +734,9 @@ fun ClientHomeScreen(
             Manifest.permission.SEND_SMS,
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.READ_CONTACTS
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -675,6 +758,8 @@ fun ClientHomeScreen(
                 hasCallPermissions = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED &&
                         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED &&
                         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+                hasLocationPermission = com.example.util.LocationUtils.hasLocationPermission(context)
+                hasNotificationListenerAccess = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
                 isBatteryExempt = powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
                 if (hasSmsPermission) {
                     viewModel.toggleService(context, true)
@@ -2047,6 +2132,266 @@ fun ClientHomeScreen(
                 }
             }
 
+            // Remote GPS Location Responder Card
+            item {
+                val isLocationActive = isRemoteLocationEnabled && hasLocationPermission
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isLocationActive) Color(0xFFF0FDF4) else Color(0xFFF8FAFC)
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isLocationActive) Color(0xFF86EFAC) else Color(0xFFE2E8F0)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isLocationActive) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
+                                    modifier = Modifier.size(44.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.LocationOn,
+                                            contentDescription = null,
+                                            tint = if (isLocationActive) Color(0xFF16A34A) else Color(0xFF64748B),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "Remote GPS Location",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = Color(0xFF1E293B)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isLocationActive) Color(0xFF22C55E) else Color(0xFF94A3B8)
+                                        ) {
+                                            Text(
+                                                text = if (isLocationActive) "ACTIVE" else "OFF",
+                                                color = Color.White,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "On-demand GPS via Internet, SMS, or WhatsApp",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = isRemoteLocationEnabled,
+                                onCheckedChange = { enable ->
+                                    if (enable) {
+                                        if (!hasLocationPermission) {
+                                            locationPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                                )
+                                            )
+                                        } else {
+                                            viewModel.setRemoteLocationEnabled(true)
+                                            Toast.makeText(context, "Remote Location Responder Enabled", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        viewModel.setRemoteLocationEnabled(false)
+                                        Toast.makeText(context, "Remote Location Responder Disabled", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF16A34A)
+                                )
+                            )
+                        }
+
+                        if (!hasLocationPermission && isRemoteLocationEnabled) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Surface(
+                                color = Color(0xFFFEF2F2),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Precise GPS Permission Needed",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.5.sp,
+                                            color = Color(0xFF991B1B)
+                                        )
+                                        Text(
+                                            text = "Required to read exact latitude/longitude coordinates when requested.",
+                                            fontSize = 11.5.sp,
+                                            color = Color(0xFFB91C1C)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            locationPermissionLauncher.launch(
+                                                arrayOf(
+                                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                                )
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        if (isRemoteLocationEnabled) {
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Settings Details Surface
+                            Surface(
+                                color = Color(0xFFF8FAFC),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    // Keyword row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "SMS / WhatsApp Trigger Keyword",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF334155)
+                                            )
+                                            Text(
+                                                text = "Send '$locationTriggerKeyword' (or '#LOCATION') to auto-receive live Google Maps link",
+                                                fontSize = 11.5.sp,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        OutlinedButton(
+                                            onClick = { showLocationKeywordDialog = true },
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Text(locationTriggerKeyword, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Channels supported info
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "⚡ Host In-App:",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Tap 📍 Location in Host app",
+                                                fontSize = 11.5.sp,
+                                                color = Color(0xFF16A34A)
+                                            )
+                                        }
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "💬 WhatsApp:",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            if (hasNotificationListenerAccess) {
+                                                Text(
+                                                    text = "Direct-Reply Active",
+                                                    fontSize = 11.5.sp,
+                                                    color = Color(0xFF16A34A),
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            } else {
+                                                TextButton(
+                                                    onClick = {
+                                                        try {
+                                                            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                                                        } catch (e: Exception) {
+                                                            Toast.makeText(context, "Open Settings -> Notification Access", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    },
+                                                    contentPadding = PaddingValues(0.dp),
+                                                    modifier = Modifier.height(22.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "Enable Access ↗",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFEA580C)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 2. Permission Checklist Card
             item {
                 Card(
@@ -2087,12 +2432,18 @@ fun ClientHomeScreen(
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         PermissionRow(
+                            label = "GPS Location (Remote Responder)",
+                            granted = hasLocationPermission,
+                            icon = Icons.Default.LocationOn
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        PermissionRow(
                             label = "Battery Optimization Disabled",
                             granted = isBatteryExempt,
                             icon = Icons.Default.BatteryAlert
                         )
 
-                        if (!hasSmsPermission || !hasNotificationPermission || !isBatteryExempt || !hasCallPermissions) {
+                        if (!hasSmsPermission || !hasNotificationPermission || !isBatteryExempt || !hasCallPermissions || !hasLocationPermission) {
                             Spacer(modifier = Modifier.height(18.dp))
                             Button(
                                 onClick = {
@@ -2111,6 +2462,13 @@ fun ClientHomeScreen(
                                                 Manifest.permission.READ_PHONE_STATE,
                                                 Manifest.permission.READ_CALL_LOG,
                                                 Manifest.permission.READ_CONTACTS
+                                            )
+                                        )
+                                    } else if (!hasLocationPermission) {
+                                        locationPermissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
                                             )
                                         )
                                     } else if (!isBatteryExempt) {
