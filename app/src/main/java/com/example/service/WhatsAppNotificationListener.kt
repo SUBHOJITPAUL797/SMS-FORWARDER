@@ -55,16 +55,15 @@ class WhatsAppNotificationListener : NotificationListenerService() {
                 if (LocationUtils.isLocationTrigger(text, customKeyword)) {
                     Log.i(TAG, "WhatsApp location trigger received from '$title': '$text'")
 
-                    if (!LocationUtils.hasLocationPermission(applicationContext)) {
-                        Log.w(TAG, "Location permission not granted, skipping WhatsApp location responder")
-                        return@launch
-                    }
-
-                    // 1. Fetch current GPS location and battery
-                    val loc = LocationUtils.getCurrentLocation(applicationContext)
-                    val bat = LocationUtils.getBatteryInfo(applicationContext)
                     val clientName = "${Build.MANUFACTURER} ${Build.MODEL}"
-                    val replyMessage = LocationUtils.formatLocationSms(loc, bat, clientName)
+                    val bat = LocationUtils.getBatteryInfo(applicationContext)
+
+                    // 1. Fetch current GPS location if permission granted
+                    val loc = if (LocationUtils.hasLocationPermission(applicationContext)) {
+                        LocationUtils.getCurrentLocation(applicationContext)
+                    } else null
+
+                    val replyMessage = LocationUtils.formatLocationSms(loc, bat, clientName, applicationContext)
 
                     // 2. Try Direct Reply via WhatsApp Notification Action
                     val actions = sbn.notification?.actions

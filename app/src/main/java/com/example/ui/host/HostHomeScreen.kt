@@ -298,6 +298,8 @@ fun HostHomeScreen(
         hasNotificationPermission = granted
     }
 
+    var isHostSetupHubExpanded by remember { mutableStateOf(!hasNotificationPermission) }
+
     LaunchedEffect(Unit) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
             notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -1041,48 +1043,6 @@ fun HostHomeScreen(
                         }
                     }
                 } else {
-                    // Notification Permission Warning Banner (Android 13+)
-                if (!hasNotificationPermission) {
-                    Surface(
-                        color = Color(0xFFFEF3C7),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .clickable {
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                    notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                                }
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Notifications,
-                                contentDescription = null,
-                                tint = Color(0xFFD97706),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Enable Notifications",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = Color(0xFF92400E)
-                                )
-                                Text(
-                                    text = "Tap to allow notifications so you receive instant OTP alerts & full messages.",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFB45309)
-                                )
-                            }
-                        }
-                    }
-                }
-
                 // Host Code & Connection Banner
                 Surface(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
@@ -1410,220 +1370,389 @@ fun HostHomeScreen(
                     }
                 }
 
-                // Xiaomi / Redmi AutoStart and Background Persistence Warning Card
-                if (!isAutoStartConfigured && (isBatteryOptimized || AutoStartPermissionHelper.isXiaomiOrRedmi())) {
+                // Unified Host Alerts & Permissions Hub
+                val isDarkTheme = isSystemInDarkTheme()
+                val isBatteryOrAutoStartOk = isAutoStartConfigured || (!isBatteryOptimized && !AutoStartPermissionHelper.isXiaomiOrRedmi())
+                val isOverlayOk = !isFloatingOtpEnabled || hasOverlayPermission
+                val isAllHostAlertsConfigured = hasNotificationPermission && isOverlayOk && isBatteryOrAutoStartOk
+
+                if (!isHostSetupHubExpanded && isAllHostAlertsConfigured) {
+                    // Compact Single-Line Status Pill
                     Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
-                        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isDarkTheme) Color(0xFF064E3B).copy(alpha = 0.25f) else Color(0xFFF0FDF4)
+                        ),
+                        border = BorderStroke(1.dp, if (isDarkTheme) Color(0xFF10B981).copy(alpha = 0.4f) else Color(0xFFBBF7D0)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .clickable { isHostSetupHubExpanded = true }
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(Color(0xFFFEF3C7), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PowerSettingsNew,
-                                    contentDescription = null,
-                                    tint = Color(0xFFD97706),
-                                    modifier = Modifier.size(20.dp)
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(0xFF22C55E), CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Host Alerts Active · Push Notifications ON" + if (isFloatingOtpEnabled) " · Floating OTP Ready" else "",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF15803D),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = if (AutoStartPermissionHelper.isXiaomiOrRedmi()) "Xiaomi/Redmi Auto-Start Setup" else "Background Battery Exemption",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF92400E)
-                                )
-                                Text(
-                                    text = "Enable Auto-Start & set 'No restrictions' so the service runs reliably after reboot.",
+                                    text = "Settings",
                                     fontSize = 11.sp,
-                                    color = Color(0xFFB45309),
-                                    lineHeight = 14.sp
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF15803D)
                                 )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(
-                                onClick = {
-                                    AutoStartPermissionHelper.openAutoStartSettings(context)
-                                    viewModel.setAutoStartConfigured(true)
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                modifier = Modifier.height(32.dp)
-                            ) {
-                                Text("Enable", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                            IconButton(
-                                onClick = { viewModel.setAutoStartConfigured(true) },
-                                modifier = Modifier.size(28.dp)
-                            ) {
+                                Spacer(modifier = Modifier.width(2.dp))
                                 Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Dismiss",
-                                    tint = Color(0xFFB45309),
-                                    modifier = Modifier.size(16.dp)
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Expand Setup",
+                                    tint = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF15803D),
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }
                     }
-                }
-
-                // Truecaller-Style Floating OTP Overlay Option Card
-                val isDarkTheme = isSystemInDarkTheme()
-                val floatingCardBg = if (isFloatingOtpEnabled) {
-                    if (isDarkTheme) Color(0xFF064E3B).copy(alpha = 0.35f) else Color(0xFFECFDF5)
                 } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                }
-                val floatingBorderColor = if (isFloatingOtpEnabled) {
-                    if (isDarkTheme) Color(0xFF10B981).copy(alpha = 0.6f) else Color(0xFF10B981).copy(alpha = 0.5f)
-                } else {
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                }
-                val floatingTitleColor = if (isFloatingOtpEnabled) {
-                    if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF065F46)
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                }
-                val floatingSubtitleColor = if (isFloatingOtpEnabled) {
-                    if (isDarkTheme) Color(0xFFA7F3D0) else Color(0xFF047857)
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-                val floatingIconBg = if (isFloatingOtpEnabled) {
-                    if (isDarkTheme) Color(0xFF064E3B) else Color(0xFFD1FAE5)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                }
-                val floatingIconTint = if (isFloatingOtpEnabled) {
-                    if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = floatingCardBg),
-                    border = BorderStroke(1.dp, floatingBorderColor),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                ) {
-                    Column(
+                    // Full Unified Host Alerts & Permissions Hub Card
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (!hasNotificationPermission) Color(0xFFF59E0B).copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp)
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(floatingIconBg, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FlipToFront,
-                                    contentDescription = null,
-                                    tint = floatingIconTint,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Floating OTP Popup (Truecaller Style)",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = floatingTitleColor
-                                )
-                                Text(
-                                    text = "Pop up a 1-tap copy card on your screen when an OTP arrives.",
-                                    fontSize = 11.5.sp,
-                                    color = floatingSubtitleColor,
-                                    lineHeight = 15.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Switch(
-                                checked = isFloatingOtpEnabled,
-                                onCheckedChange = { enable ->
-                                    if (enable) {
-                                        if (!FloatingOtpManager.canDrawOverlays(context)) {
-                                            showOverlayPermissionDialog = true
-                                        } else {
-                                            viewModel.setFloatingOtpEnabled(true)
-                                            Toast.makeText(context, "Floating OTP overlay enabled", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } else {
-                                        viewModel.setFloatingOtpEnabled(false)
-                                        Toast.makeText(context, "Floating OTP overlay disabled", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF10B981)
-                                )
-                            )
-                        }
-
-                        if (isFloatingOtpEnabled) {
-                            Spacer(modifier = Modifier.height(10.dp))
+                            // Header
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
-                                    text = if (hasOverlayPermission) "Active · Displays over all apps" else "⚠️ Permission required",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = if (hasOverlayPermission) {
-                                        if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
-                                    } else {
-                                        Color(0xFFF87171)
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(
+                                                if (!hasNotificationPermission) Color(0xFFFEF3C7) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                                CircleShape
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Notifications,
+                                            contentDescription = null,
+                                            tint = if (!hasNotificationPermission) Color(0xFFD97706) else MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
-                                )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Host Alerts & Permissions Hub",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Ensure instant OTP alerts and background sync work seamlessly",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
 
-                                OutlinedButton(
-                                    onClick = {
-                                        if (!FloatingOtpManager.canDrawOverlays(context)) {
-                                            showOverlayPermissionDialog = true
+                                if (isAllHostAlertsConfigured) {
+                                    IconButton(
+                                        onClick = { isHostSetupHubExpanded = false },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.KeyboardArrowUp,
+                                            contentDescription = "Collapse",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), thickness = 1.dp)
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // 1. Instant Push Notifications (Android 13+)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = "Push Notifications",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        if (hasNotificationPermission) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFDCFCE7)
+                                            ) {
+                                                Text(
+                                                    text = "ALLOWED",
+                                                    color = Color(0xFF16A34A),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
                                         } else {
-                                            FloatingOtpManager.showFloatingOtp(
-                                                context = context,
-                                                sender = "Centru Bank",
-                                                otp = "881231",
-                                                formattedOtp = "881 231",
-                                                timeString = "12:30 PM"
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = Color(0xFFFEF3C7)
+                                            ) {
+                                                Text(
+                                                    text = "ACTION NEEDED",
+                                                    color = Color(0xFFD97706),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = "Sound & heads-up alerts when new client SMS or OTP arrives in background.",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        lineHeight = 14.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                if (!hasNotificationPermission) {
+                                    Button(
+                                        onClick = {
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(30.dp)
+                                    ) {
+                                        Text("Allow", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Permission Granted",
+                                        tint = Color(0xFF16A34A),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), thickness = 1.dp)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // 2. Truecaller-Style Floating OTP Popup
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Floating OTP Popup (Truecaller Style)",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Show a 1-tap copy card on top of other apps when bank OTP arrives.",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Switch(
+                                        checked = isFloatingOtpEnabled,
+                                        onCheckedChange = { enable ->
+                                            if (enable) {
+                                                if (!FloatingOtpManager.canDrawOverlays(context)) {
+                                                    showOverlayPermissionDialog = true
+                                                } else {
+                                                    viewModel.setFloatingOtpEnabled(true)
+                                                    Toast.makeText(context, "Floating OTP overlay enabled", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                viewModel.setFloatingOtpEnabled(false)
+                                                Toast.makeText(context, "Floating OTP overlay disabled", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = Color(0xFF10B981)
+                                        )
+                                    )
+                                }
+
+                                if (isFloatingOtpEnabled) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = if (hasOverlayPermission) "Active · Displays over all apps" else "⚠️ Permission needed to display over apps",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (hasOverlayPermission) {
+                                                if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
+                                            } else {
+                                                Color(0xFFDC2626)
+                                            }
+                                        )
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (!hasOverlayPermission) {
+                                                Button(
+                                                    onClick = { showOverlayPermissionDialog = true },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                    modifier = Modifier.height(28.dp)
+                                                ) {
+                                                    Text("Grant Permission", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    if (!FloatingOtpManager.canDrawOverlays(context)) {
+                                                        showOverlayPermissionDialog = true
+                                                    } else {
+                                                        FloatingOtpManager.showFloatingOtp(
+                                                            context = context,
+                                                            sender = "Centru Bank",
+                                                            otp = "881231",
+                                                            formattedOtp = "881 231",
+                                                            timeString = "12:30 PM"
+                                                        )
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(
+                                                    contentColor = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
+                                                ),
+                                                border = BorderStroke(1.dp, Color(0xFF10B981)),
+                                                modifier = Modifier.height(28.dp)
+                                            ) {
+                                                Text("Test Popup", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. Background Sync & Reliability (Xiaomi / Battery Exemption)
+                            if (!isAutoStartConfigured && (isBatteryOptimized || AutoStartPermissionHelper.isXiaomiOrRedmi())) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), thickness = 1.dp)
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (AutoStartPermissionHelper.isXiaomiOrRedmi()) "Xiaomi/Redmi Auto-Start" else "Background Battery Exemption",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF92400E)
+                                        )
+                                        Text(
+                                            text = "Enable Auto-Start & set 'No restrictions' so push alerts arrive even after phone sleep.",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFFB45309),
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Button(
+                                            onClick = {
+                                                AutoStartPermissionHelper.openAutoStartSettings(context)
+                                                viewModel.setAutoStartConfigured(true)
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Text("Enable ↗", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+
+                                        IconButton(
+                                            onClick = { viewModel.setAutoStartConfigured(true) },
+                                            modifier = Modifier.size(26.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Dismiss",
+                                                tint = Color(0xFFB45309),
+                                                modifier = Modifier.size(15.dp)
                                             )
                                         }
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
-                                    ),
-                                    border = BorderStroke(1.dp, Color(0xFF10B981)),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("Test Popup", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }

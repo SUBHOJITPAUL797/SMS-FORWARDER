@@ -86,39 +86,37 @@ class SmsReceiver : BroadcastReceiver() {
                     val customKeyword = prefs.locationTriggerKeywordFlow.firstOrNull() ?: "#LOC"
                     if (isLocEnabled && com.example.util.LocationUtils.isLocationTrigger(fullBody, customKeyword)) {
                         Log.i(TAG, "Location trigger detected from $sender via SMS: $fullBody")
-                        if (com.example.util.LocationUtils.hasLocationPermission(context)) {
-                            val loc = com.example.util.LocationUtils.getCurrentLocation(context)
-                            val bat = com.example.util.LocationUtils.getBatteryInfo(context)
-                            val clientName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
-                            val replyText = com.example.util.LocationUtils.formatLocationSms(loc, bat, clientName)
+                        val clientName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+                        val bat = com.example.util.LocationUtils.getBatteryInfo(context)
+                        val loc = if (com.example.util.LocationUtils.hasLocationPermission(context)) {
+                            com.example.util.LocationUtils.getCurrentLocation(context)
+                        } else null
+                        val replyText = com.example.util.LocationUtils.formatLocationSms(loc, bat, clientName, context)
 
-                            // Send cellular SMS reply back to requester
-                            val simSendRes = com.example.util.SimUtils.sendCellularSms(
-                                context = context,
-                                subscriptionId = null,
-                                destinationNumber = sender,
-                                messageText = replyText
+                        // Send cellular SMS reply back to requester
+                        val simSendRes = com.example.util.SimUtils.sendCellularSms(
+                            context = context,
+                            subscriptionId = null,
+                            destinationNumber = sender,
+                            messageText = replyText
+                        )
+                        Log.i(TAG, "Sent cellular SMS location reply to $sender: success=${simSendRes.isSuccess}")
+
+                        // Also upload to Host feed if linked
+                        val hostUid = prefs.linkedUidFlow.firstOrNull()
+                        val clientUid = prefs.getOrCreateDeviceUid()
+                        if (!hostUid.isNullOrEmpty() && smsRepo != null) {
+                            val locMsg = com.example.domain.model.SmsMessage(
+                                messageId = "sms_loc_${System.currentTimeMillis()}",
+                                sender = "📍 SMS Location ($sender)",
+                                body = replyText,
+                                receivedAt = System.currentTimeMillis(),
+                                uploadedAt = System.currentTimeMillis(),
+                                clientUid = clientUid,
+                                clientDeviceName = clientName,
+                                read = false
                             )
-                            Log.i(TAG, "Sent cellular SMS location reply to $sender: success=${simSendRes.isSuccess}")
-
-                            // Also upload to Host feed if linked
-                            val hostUid = prefs.linkedUidFlow.firstOrNull()
-                            val clientUid = prefs.getOrCreateDeviceUid()
-                            if (!hostUid.isNullOrEmpty() && smsRepo != null) {
-                                val locMsg = com.example.domain.model.SmsMessage(
-                                    messageId = "sms_loc_${System.currentTimeMillis()}",
-                                    sender = "📍 SMS Location ($sender)",
-                                    body = replyText,
-                                    receivedAt = System.currentTimeMillis(),
-                                    uploadedAt = System.currentTimeMillis(),
-                                    clientUid = clientUid,
-                                    clientDeviceName = clientName,
-                                    read = false
-                                )
-                                smsRepo.uploadPendingMessageDirect(hostUid, locMsg)
-                            }
-                        } else {
-                            Log.w(TAG, "Location permission missing, cannot reply to SMS location trigger")
+                            smsRepo.uploadPendingMessageDirect(hostUid, locMsg)
                         }
                     }
                 }

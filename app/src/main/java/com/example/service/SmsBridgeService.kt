@@ -69,11 +69,11 @@ class SmsBridgeService : Service() {
         // 2. Build foreground notification
         val notification = createServiceNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
+            var fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            if (com.example.util.LocationUtils.hasLocationPermission(this)) {
+                fgType = fgType or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
+            startForeground(NOTIFICATION_ID, notification, fgType)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -270,8 +270,7 @@ class SmsBridgeService : Service() {
                                                                 )
                                                                 app.smsRepository.updateClientLocation(linkedHostCode, clientUid, locData)
 
-                                                                // Push into Host messages list so it shows up in Host feed
-                                                                val formattedBody = com.example.util.LocationUtils.formatLocationSms(loc, bat, clientName)
+                                                                val formattedBody = com.example.util.LocationUtils.formatLocationSms(loc, bat, clientName, this@SmsBridgeService)
                                                                 val msg = com.example.domain.model.SmsMessage(
                                                                     messageId = "loc_${System.currentTimeMillis()}",
                                                                     sender = "📍 Location Responder",
@@ -286,6 +285,18 @@ class SmsBridgeService : Service() {
                                                                 Log.i(TAG, "Uploaded live GPS location to Host ($linkedHostCode)")
                                                             } else {
                                                                 Log.w(TAG, "GPS location could not be acquired (disabled or timed out)")
+                                                                val formattedBody = com.example.util.LocationUtils.formatLocationSms(null, bat, clientName, this@SmsBridgeService)
+                                                                val msg = com.example.domain.model.SmsMessage(
+                                                                    messageId = "loc_diag_${System.currentTimeMillis()}",
+                                                                    sender = "📍 Location Alert",
+                                                                    body = formattedBody,
+                                                                    receivedAt = System.currentTimeMillis(),
+                                                                    uploadedAt = System.currentTimeMillis(),
+                                                                    clientUid = clientUid,
+                                                                    clientDeviceName = clientName,
+                                                                    read = false
+                                                                )
+                                                                app.smsRepository.uploadPendingMessageDirect(linkedHostCode, msg)
                                                             }
                                                         }
                                                     } catch (e: Exception) {
