@@ -108,18 +108,16 @@ class WalkieTalkieService : Service() {
                 peerName = intent.getStringExtra(EXTRA_PEER_NAME) ?: "Unknown"
                 startServiceForeground(buildActiveNotification(peerName))
                 Log.d(TAG, "Walkie-Talkie session started: $currentSessionId with $peerName")
-                // Phase 2: PeerConnectionEngine will be initialized here
             }
             ACTION_STOP -> {
                 Log.d(TAG, "Walkie-Talkie session stopped")
+                startServiceForeground(buildActiveNotification(peerName))
                 stopForegroundSession()
             }
             else -> {
-                // Service restarted by system — re-attach to notification if session active
-                if (currentSessionId != null) {
-                    startServiceForeground(buildActiveNotification(peerName))
-                } else {
-                    stopSelf()
+                startServiceForeground(buildActiveNotification(peerName))
+                if (currentSessionId == null) {
+                    stopForegroundSession()
                 }
             }
         }
@@ -127,14 +125,29 @@ class WalkieTalkieService : Service() {
     }
 
     private fun startServiceForeground(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val hasMicPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.RECORD_AUDIO
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (hasMicPerm) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Fallback startForeground in WalkieTalkieService", e)
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (_: Exception) {}
         }
     }
 

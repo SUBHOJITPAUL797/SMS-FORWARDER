@@ -31,6 +31,7 @@ class WhatsAppNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         super.onNotificationPosted(sbn)
         if (sbn == null) return
+        if (!com.example.util.ServiceStarter.isUserUnlocked(applicationContext)) return
 
         val pkg = sbn.packageName ?: return
         if (pkg != WHATSAPP_PKG && pkg != WHATSAPP_BIZ_PKG) return

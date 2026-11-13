@@ -1,14 +1,27 @@
 package com.example.ui.pairing
 
 import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Size
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +32,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -27,7 +41,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
@@ -42,13 +56,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -77,21 +89,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.content.pm.PackageManager
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.statusBarsPadding
-import android.os.Handler
-import android.os.Looper
+import com.example.ui.theme.CrimsonError
+import com.example.ui.theme.EmeraldBright
+import com.example.ui.theme.EmeraldPrimary
+import com.example.ui.theme.EmeraldSurface
+import com.example.ui.theme.ObsidianBg
+import com.example.ui.theme.ObsidianBorder
+import com.example.ui.theme.ObsidianCard
+import com.example.ui.theme.ObsidianSurface
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import com.example.util.QrCodeUtils
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
@@ -168,15 +176,16 @@ fun HostPairingScreen(
     }
 
     Scaffold(
+        containerColor = ObsidianBg,
         topBar = {
             TopAppBar(
-                title = { Text("Pair as Host", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Pair as Host", fontWeight = FontWeight.ExtraBold, color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = ObsidianBg)
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -188,10 +197,7 @@ fun HostPairingScreen(
                 .padding(padding)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.background,
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
+                        colors = listOf(ObsidianBg, ObsidianSurface)
                     )
                 )
                 .imePadding()
@@ -206,14 +212,15 @@ fun HostPairingScreen(
                 Box(
                     modifier = Modifier
                         .size(68.dp)
-                        .background(color = Color(0xFFEADDFF), shape = CircleShape),
+                        .background(color = EmeraldSurface, shape = CircleShape)
+                        .border(1.dp, EmeraldPrimary.copy(alpha = 0.5f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Link,
                         contentDescription = null,
-                        tint = Color(0xFF6750A4),
-                        modifier = Modifier.size(36.dp)
+                        tint = EmeraldBright,
+                        modifier = Modifier.size(34.dp)
                     )
                 }
 
@@ -221,15 +228,15 @@ fun HostPairingScreen(
 
                 Text(
                     text = "Connect Client Phone",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
                 )
 
                 Text(
                     text = "Scan the QR on your Client device, or enter its 6-character code manually.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.5.sp,
+                    color = TextSecondary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 6.dp, bottom = 28.dp)
                 )
@@ -245,12 +252,12 @@ fun HostPairingScreen(
                         }
                     },
                     enabled = state !is HostPairingUiState.Loading,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
                         .testTag("host_scan_qr_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg)
                 ) {
                     Icon(
                         imageVector = Icons.Default.QrCodeScanner,
@@ -260,42 +267,43 @@ fun HostPairingScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Scan QR Code",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.ExtraBold
                     )
                 }
 
-                // Permission rationale if user denied
                 if (permissionDeniedOnce && !hasCameraPermission) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Camera access is needed to scan the QR code on the Client device.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        color = CrimsonError,
                         textAlign = TextAlign.Center
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(22.dp))
 
                 // ── Divider ─────────────────────────────────────────────────
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFCAC4D0))
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = ObsidianBorder)
                     Text(
-                        text = "  or enter code manually  ",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF79747E)
+                        text = "  OR ENTER CODE MANUALLY  ",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextMuted,
+                        letterSpacing = 0.8.sp
                     )
-                    HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFCAC4D0))
+                    HorizontalDivider(modifier = Modifier.weight(1f), color = ObsidianBorder)
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(22.dp))
 
                 // ── Manual code entry ───────────────────────────────────────
                 Card(
                     shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCAC4D0)),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -313,17 +321,17 @@ fun HostPairingScreen(
                                 }
                             },
                             label = { Text("6-Digit Pairing Code") },
-                            placeholder = { Text("e.g. A3K9X2") },
+                            placeholder = { Text("e.g. A3K9X2", color = TextMuted) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Key,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = EmeraldBright
                                 )
                             },
                             singleLine = true,
                             textStyle = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.ExtraBold,
                                 letterSpacing = 4.sp,
                                 fontFamily = FontFamily.Monospace
                             ),
@@ -342,12 +350,12 @@ fun HostPairingScreen(
                                 .fillMaxWidth()
                                 .testTag("host_pairing_code_input"),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color(0xFF1D1B20),
-                                unfocusedTextColor = Color(0xFF1D1B20),
-                                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                                unfocusedLabelColor = Color(0xFF49454F),
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = Color(0xFFCAC4D0)
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                focusedLabelColor = EmeraldBright,
+                                unfocusedLabelColor = TextSecondary,
+                                focusedBorderColor = EmeraldPrimary,
+                                unfocusedBorderColor = ObsidianBorder
                             )
                         )
 
@@ -364,19 +372,19 @@ fun HostPairingScreen(
                                 .fillMaxWidth()
                                 .height(52.dp)
                                 .testTag("host_pair_device_button"),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg)
                         ) {
                             if (state is HostPairingUiState.Loading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
-                                    color = Color.White,
+                                    color = ObsidianBg,
                                     strokeWidth = 2.5.dp
                                 )
                             } else {
                                 Text(
                                     text = "Pair Device",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 15.5.sp,
+                                    fontWeight = FontWeight.ExtraBold
                                 )
                             }
                         }
@@ -400,7 +408,6 @@ fun QrScannerOverlay(
 ) {
     BackHandler(onBack = onDismiss)
 
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -424,13 +431,13 @@ fun QrScannerOverlay(
         initialValue = 0.05f,
         targetValue = 0.95f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
+            animation = tween(2000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "laser_y"
     )
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = Modifier.fillMaxSize().background(ObsidianBg)) {
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx).apply {
@@ -438,7 +445,12 @@ fun QrScannerOverlay(
                 }
                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                 cameraProviderFuture.addListener({
-                    val cameraProvider = cameraProviderFuture.get()
+                    val cameraProvider = try {
+                        cameraProviderFuture.get()
+                    } catch (e: Exception) {
+                        android.util.Log.e("QrScanner", "Failed to get camera provider", e)
+                        return@addListener
+                    }
                     cameraProviderRef = cameraProvider
 
                     val preview = Preview.Builder().build().also {
@@ -477,14 +489,11 @@ fun QrScannerOverlay(
                                 try {
                                     decodedText = reader.decode(binaryBitmap).text
                                 } catch (_: NotFoundException) {
-                                    // Try inverted for dark-mode QR codes
                                     try {
                                         val inverted = source.invert()
                                         binaryBitmap = BinaryBitmap(HybridBinarizer(inverted))
                                         decodedText = reader.decode(binaryBitmap).text
-                                    } catch (_: NotFoundException) {
-                                        // No QR found in this frame
-                                    }
+                                    } catch (_: NotFoundException) {}
                                 }
 
                                 if (decodedText != null && !scanned) {
@@ -526,31 +535,30 @@ fun QrScannerOverlay(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Center reticle viewfinder overlay
+        // Center reticle viewfinder overlay with Emerald laser
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
-                    .size(260.dp)
-                    .border(BorderStroke(2.5.dp, Color(0xFF00E5FF).copy(alpha = 0.85f)), RoundedCornerShape(20.dp))
-                    .background(Color(0xFF00E5FF).copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                    .size(264.dp)
+                    .border(BorderStroke(2.5.dp, EmeraldPrimary.copy(alpha = 0.9f)), RoundedCornerShape(24.dp))
+                    .background(EmeraldPrimary.copy(alpha = 0.06f), RoundedCornerShape(24.dp))
             ) {
-                // Animated laser line
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(2.5.dp)
+                        .height(3.dp)
                         .align(Alignment.TopCenter)
-                        .padding(top = (260 * laserPosition).dp)
+                        .padding(top = (264 * laserPosition).dp)
                         .background(
                             Brush.horizontalGradient(
                                 listOf(
                                     Color.Transparent,
-                                    Color(0xFF00E5FF),
-                                    Color(0xFF80D8FF),
-                                    Color(0xFF00E5FF),
+                                    EmeraldPrimary,
+                                    EmeraldBright,
+                                    EmeraldPrimary,
                                     Color.Transparent
                                 )
                             )
@@ -568,21 +576,21 @@ fun QrScannerOverlay(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                        .background(ObsidianCard.copy(alpha = 0.9f), RoundedCornerShape(24.dp))
+                        .border(1.dp, EmeraldPrimary.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.QrCodeScanner,
                         contentDescription = null,
-                        tint = Color(0xFF00E5FF),
+                        tint = EmeraldBright,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = instructionText,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center
                     )
@@ -597,12 +605,13 @@ fun QrScannerOverlay(
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
                 .padding(16.dp)
-                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                .background(ObsidianCard.copy(alpha = 0.85f), CircleShape)
+                .border(1.dp, ObsidianBorder, CircleShape)
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "Close scanner",
-                tint = Color.White
+                tint = TextPrimary
             )
         }
     }

@@ -39,6 +39,10 @@ class PhoneCallReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
+        if (!com.example.util.ServiceStarter.isUserUnlocked(context)) {
+            Log.w(TAG, "Device in Direct Boot locked state; skipping PhoneCallReceiver")
+            return
+        }
 
         val stateStr = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: return
         val incomingNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)?.trim()

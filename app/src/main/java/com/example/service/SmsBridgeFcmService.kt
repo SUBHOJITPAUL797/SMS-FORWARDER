@@ -35,12 +35,17 @@ class SmsBridgeFcmService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d(TAG, "New FCM Token received: $token")
+        if (!com.example.util.ServiceStarter.isUserUnlocked(this)) return
         serviceScope.launch {
-            val app = applicationContext as? SmsBridgeApp ?: return@launch
-            app.preferencesRepository.setFcmToken(token)
-            val user = app.authRepository.currentUser
-            if (user != null) {
-                app.firestoreSource.updateFcmToken(user.uid, token)
+            try {
+                val app = applicationContext as? SmsBridgeApp ?: return@launch
+                app.preferencesRepository.setFcmToken(token)
+                val user = app.authRepository.currentUser
+                if (user != null) {
+                    app.firestoreSource.updateFcmToken(user.uid, token)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Deferred FCM token save", e)
             }
         }
     }
@@ -48,6 +53,7 @@ class SmsBridgeFcmService : FirebaseMessagingService() {
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
         Log.d(TAG, "FCM message received from: ${remoteMessage.from}")
+        if (!com.example.util.ServiceStarter.isUserUnlocked(this)) return
 
         val data = remoteMessage.data
         val sender = data["sender"] ?: remoteMessage.notification?.title ?: "SMS Bridge"
@@ -59,15 +65,19 @@ class SmsBridgeFcmService : FirebaseMessagingService() {
 
         // Show Truecaller-styled rich notification with smart OTP extraction
         serviceScope.launch {
-            val app = applicationContext as? SmsBridgeApp
-            val hostCode = app?.authRepository?.getHostCode() ?: ""
-            HostNotificationManager.showSmsNotification(
-                context = this@SmsBridgeFcmService,
-                sender = sender,
-                body = body,
-                messageId = msgId,
-                hostCode = hostCode
-            )
+            try {
+                val app = applicationContext as? SmsBridgeApp
+                val hostCode = app?.authRepository?.getHostCode() ?: ""
+                HostNotificationManager.showSmsNotification(
+                    context = this@SmsBridgeFcmService,
+                    sender = sender,
+                    body = body,
+                    messageId = msgId,
+                    hostCode = hostCode
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing FCM SMS notification", e)
+            }
         }
     }
 }

@@ -59,24 +59,19 @@ class SmsBridgeService : Service() {
         Log.d(TAG, "SmsBridgeService onCreate()")
 
         // 1. Acquire partial wake lock to keep background processing responsive
-        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
-        wakeLock = powerManager?.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "SmsBridge:ServiceWakeLock"
-        )
-        wakeLock?.acquire(10 * 60 * 1000L) // 10 min fallback
-
-        // 2. Build foreground notification
-        val notification = createServiceNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            var fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            if (com.example.util.LocationUtils.hasLocationPermission(this)) {
-                fgType = fgType or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            }
-            startForeground(NOTIFICATION_ID, notification, fgType)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = powerManager?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "SmsBridge:ServiceWakeLock"
+            )
+            wakeLock?.acquire(10 * 60 * 1000L) // 10 min fallback
+        } catch (e: Exception) {
+            Log.w(TAG, "WakeLock acquire failed", e)
         }
+
+        // 2. Immediately promote to foreground with multi-tier fallback for Android 14+
+        ensureForegroundStarted()
 
         // 3a. Register network reconnect callback — flush offline queue the moment internet returns
         registerNetworkReconnectCallback()
@@ -359,12 +354,56 @@ class SmsBridgeService : Service() {
         }
     }
 
+    private fun ensureForegroundStarted() {
+        val notification = createServiceNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            var fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            if (com.example.util.LocationUtils.hasLocationPermission(this)) {
+                fgType = fgType or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
+            try {
+                startForeground(NOTIFICATION_ID, notification, fgType)
+            } catch (se: Exception) {
+                Log.w(TAG, "Location FGS type not permitted in current context; falling back to DATA_SYNC only", se)
+                try {
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                } catch (e2: Exception) {
+                    Log.w(TAG, "DATA_SYNC FGS fallback failed; using base startForeground", e2)
+                    try {
+                        startForeground(NOTIFICATION_ID, notification)
+                    } catch (e3: Exception) {
+                        Log.e(TAG, "Unable to call startForeground", e3)
+                    }
+                }
+            }
+        } else {
+            try {
+                startForeground(NOTIFICATION_ID, notification)
+            } catch (e: Exception) {
+                Log.e(TAG, "Unable to call startForeground on pre-Q", e)
+            }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        isRunning = true
+        // CRITICAL: Always call startForeground in onStartCommand as well as onCreate
+        // so repeated ContextCompat.startForegroundService() calls never trigger ForegroundServiceDidNotStartInTimeException
+        ensureForegroundStarted()
+
         if (intent?.action == ACTION_STOP_SERVICE) {
             serviceScope.launch {
                 val app = applicationContext as? SmsBridgeApp
                 app?.preferencesRepository?.setServiceActive(false)
             }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+            } catch (_: Exception) {}
             stopSelf()
             return START_NOT_STICKY
         }

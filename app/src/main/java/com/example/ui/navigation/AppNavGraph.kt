@@ -190,6 +190,9 @@ fun AppNavGraph(
                 onOpenWalkieTalkie = {
                     navController.navigate(Screen.WalkieTalkie.route)
                 },
+                onOpenClientPairing = {
+                    navController.navigate(Screen.ClientPairing.route)
+                },
                 onLoggedOut = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }

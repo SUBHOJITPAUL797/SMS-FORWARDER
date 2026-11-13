@@ -39,6 +39,10 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+        if (!com.example.util.ServiceStarter.isUserUnlocked(context)) {
+            Log.w(TAG, "Device still in Direct Boot locked state; deferring SMS receiver")
+            return
+        }
 
         Log.d(TAG, "SMS_RECEIVED action captured by BroadcastReceiver")
 

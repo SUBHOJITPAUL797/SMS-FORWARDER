@@ -70,16 +70,13 @@ class ClientViewModel(
 
     fun toggleService(context: Context, shouldStart: Boolean) {
         _isServiceActive.value = shouldStart
-        val serviceIntent = Intent(context, SmsBridgeService::class.java)
         if (shouldStart) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ContextCompat.startForegroundService(context, serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
+            com.example.util.ServiceStarter.startServiceSafely(
+                context,
+                com.example.domain.model.UserRole.CLIENT
+            )
         } else {
-            serviceIntent.action = SmsBridgeService.ACTION_STOP_SERVICE
-            context.startService(serviceIntent)
+            com.example.util.ServiceStarter.stopServiceSafely(context)
         }
     }
 
@@ -255,11 +252,7 @@ class ClientViewModel(
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val app = SmsBridgeApp.instance
-                val stopIntent = Intent(app, SmsBridgeService::class.java).apply {
-                    action = SmsBridgeService.ACTION_STOP_SERVICE
-                }
-                app.startService(stopIntent)
-                app.preferencesRepository.setServiceActive(false)
+                com.example.util.ServiceStarter.stopServiceSafely(app)
                 authRepository.resetRole()
             } catch (e: Exception) {
                 // Ignore
@@ -272,11 +265,7 @@ class ClientViewModel(
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val app = SmsBridgeApp.instance
-                val stopIntent = Intent(app, SmsBridgeService::class.java).apply {
-                    action = SmsBridgeService.ACTION_STOP_SERVICE
-                }
-                app.startService(stopIntent)
-                app.preferencesRepository.setServiceActive(false)
+                com.example.util.ServiceStarter.stopServiceSafely(app)
                 authRepository.logout()
             } catch (e: Exception) {
                 // Ignore

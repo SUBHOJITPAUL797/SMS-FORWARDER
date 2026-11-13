@@ -23,6 +23,10 @@ object AutoStartPermissionHelper {
                 brand.contains("poco")
     }
 
+    fun getDeviceBrandName(): String {
+        return Build.MANUFACTURER.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    }
+
     fun isBatteryOptimized(context: Context): Boolean {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         return powerManager?.isIgnoringBatteryOptimizations(context.packageName) != true

@@ -133,12 +133,13 @@ fun WalkieTalkieScreen(
         label = "ring_alpha"
     )
 
-    val deepPurple = Color(0xFF6A0DAD)
-    val accentGreen = Color(0xFF00E676)
-    val accentRed = Color(0xFFFF1744)
-    val surfaceGlass = Color(0xFF1A1A2E)
+    val deepPurple = Color(0xFFFF5A36) // Energetic Coral accent
+    val accentGreen = Color(0xFF10B981) // Vibrant Emerald accent
+    val accentRed = Color(0xFFEF4444)
+    val surfaceGlass = Color(0xFF171E2B) // Obsidian Card surface
 
     Scaffold(
+        containerColor = Color(0xFF0A0D12),
         topBar = {
             TopAppBar(
                 title = {
@@ -146,21 +147,26 @@ fun WalkieTalkieScreen(
                         Icon(
                             Icons.Default.RadioButtonChecked,
                             contentDescription = null,
-                            tint = if (callState == WtCallState.ACTIVE) accentGreen else Color(0xFFFFA000),
+                            tint = if (callState == WtCallState.ACTIVE) accentGreen else Color(0xFFFF5A36),
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
                             "Walkie-Talkie",
                             style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFF8FAFC)
                             )
                         )
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color(0xFFF8FAFC)
+                        )
                     }
                 },
                 actions = {
@@ -175,14 +181,14 @@ fun WalkieTalkieScreen(
                             Icon(
                                 Icons.Default.FiberManualRecord,
                                 contentDescription = "Recording",
-                                tint = if (isRecording) accentRed else Color.Gray,
+                                tint = if (isRecording) accentRed else Color(0xFF94A3B8),
                                 modifier = Modifier.size(24.dp)
                             )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color(0xFF0A0D12)
                 )
             )
         }
@@ -193,8 +199,8 @@ fun WalkieTalkieScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.surface,
-                            Color(0xFF0D0D1A)
+                            Color(0xFF0A0D12),
+                            Color(0xFF121721)
                         )
                     )
                 )

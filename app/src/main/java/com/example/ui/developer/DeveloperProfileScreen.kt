@@ -85,15 +85,15 @@ import com.example.ui.update.InAppUpdateDialog
 import com.example.util.UpdateChecker
 import kotlinx.coroutines.launch
 
-// Primary Rich Purple Color Tokens
-private val DeepPurpleHeader = Color(0xFF2E1065)
-private val PurplePrimary = Color(0xFF6750A4)
-private val PurpleAccent = Color(0xFF9333EA)
-private val PurpleContainer = Color(0xFFF3E8FF)
-private val PurpleCardBg = Color(0xFFFAF5FF)
-private val PurpleBorder = Color(0xFFE9D5FF)
-private val DarkText = Color(0xFF1E1B4B)
-private val SubtitleText = Color(0xFF581C87)
+// Sleek Obsidian & Emerald Developer Profile Tokens
+private val DeepPurpleHeader = Color(0xFF0A0D12)
+private val PurplePrimary = Color(0xFF10B981)
+private val PurpleAccent = Color(0xFFFF5A36)
+private val PurpleContainer = Color(0xFFD1FAE5)
+private val PurpleCardBg = Color(0xFF171E2B)
+private val PurpleBorder = Color(0xFF232D3F)
+private val DarkText = Color(0xFF0F172A)
+private val SubtitleText = Color(0xFF065F46)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,8 +122,8 @@ fun DeveloperProfileScreen(
                 title = {
                     Text(
                         text = "Developer Profile",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFF8FAFC)
                     )
                 },
                 navigationIcon = {
@@ -131,7 +131,7 @@ fun DeveloperProfileScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White
+                            tint = Color(0xFFF8FAFC)
                         )
                     }
                 },
@@ -142,7 +142,7 @@ fun DeveloperProfileScreen(
                                 type = "text/plain"
                                 putExtra(
                                     Intent.EXTRA_TEXT,
-                                    "Check out SMS Forwarder created by Subhojit Paul!\nPortfolio: https://subhojit-paul.pages.dev/\nGitHub: https://github.com/SUBHOJITPAUL797/SMS-FORWARDER"
+                                    "Check out SMS Bridge created by Subhojit Paul!\nPortfolio: https://subhojit-paul.pages.dev/\nGitHub: https://github.com/SUBHOJITPAUL797/SMS-FORWARDER"
                                 )
                             }
                             context.startActivity(Intent.createChooser(shareIntent, "Share Developer Profile"))
@@ -151,7 +151,7 @@ fun DeveloperProfileScreen(
                         Icon(
                             imageVector = Icons.Default.Share,
                             contentDescription = "Share Profile",
-                            tint = Color.White
+                            tint = Color(0xFF34D399)
                         )
                     }
                 },
@@ -160,6 +160,7 @@ fun DeveloperProfileScreen(
                 )
             )
         },
+        containerColor = DeepPurpleHeader,
         modifier = Modifier.fillMaxSize()
     ) { padding ->
         Box(
@@ -169,13 +170,10 @@ fun DeveloperProfileScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            DeepPurpleHeader,
-                            Color(0xFF3B0764),
-                            Color(0xFF581C87),
-                            Color(0xFFFAF5FF)
-                        ),
-                        startY = 0f,
-                        endY = 1200f
+                            Color(0xFF0A0D12),
+                            Color(0xFF121721),
+                            Color(0xFF0A0D12)
+                        )
                     )
                 )
         ) {

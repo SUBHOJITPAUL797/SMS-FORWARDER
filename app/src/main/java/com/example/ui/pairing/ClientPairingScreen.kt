@@ -1,11 +1,18 @@
 package com.example.ui.pairing
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -22,62 +29,68 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.model.PairingState
+import com.example.ui.theme.CoralBright
+import com.example.ui.theme.CoralSecondary
+import com.example.ui.theme.CoralSurface
+import com.example.ui.theme.CrimsonError
+import com.example.ui.theme.EmeraldBright
+import com.example.ui.theme.EmeraldPrimary
+import com.example.ui.theme.EmeraldSurface
+import com.example.ui.theme.ObsidianBg
+import com.example.ui.theme.ObsidianBorder
+import com.example.ui.theme.ObsidianCard
+import com.example.ui.theme.ObsidianSurface
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
 import com.example.util.QrCodeUtils
-
-import android.Manifest
-import android.content.pm.PackageManager
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,13 +158,16 @@ fun ClientPairingScreen(
     if (showManualCodeDialog) {
         AlertDialog(
             onDismissRequest = { if (!isConnectingManual) showManualCodeDialog = false },
-            title = { Text("Connect to Host", fontWeight = FontWeight.Bold) },
+            containerColor = ObsidianSurface,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary,
+            title = { Text("Connect to Host", fontWeight = FontWeight.ExtraBold) },
             text = {
                 Column {
                     Text(
                         "Enter the 6-character Host Code displayed on your Host (Receiver) device:",
                         fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
@@ -162,6 +178,13 @@ fun ClientPairingScreen(
                         label = { Text("Host Code (e.g. 6 chars)") },
                         placeholder = { Text("e.g. R44MQG") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldPrimary,
+                            unfocusedBorderColor = ObsidianBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -177,29 +200,31 @@ fun ClientPairingScreen(
                             Toast.makeText(context, "Please enter a valid Host Code.", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    enabled = manualHostCodeInput.trim().isNotEmpty()
+                    enabled = manualHostCodeInput.trim().isNotEmpty(),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg)
                 ) {
-                    Text("Connect", fontWeight = FontWeight.Bold)
+                    Text("Connect", fontWeight = FontWeight.ExtraBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showManualCodeDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel", color = TextSecondary)
                 }
             }
         )
     }
 
     Scaffold(
+        containerColor = ObsidianBg,
         topBar = {
             TopAppBar(
-                title = { Text("Pair as Client (Sender)", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Pair as Client (Sender)", fontWeight = FontWeight.ExtraBold, color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = ObsidianBg)
             )
         },
         modifier = Modifier.fillMaxSize()
@@ -210,10 +235,7 @@ fun ClientPairingScreen(
                 .padding(padding)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.background,
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
+                        colors = listOf(ObsidianBg, ObsidianSurface)
                     )
                 )
         ) {
@@ -228,14 +250,15 @@ fun ClientPairingScreen(
                 Box(
                     modifier = Modifier
                         .size(64.dp)
-                        .background(color = Color(0xFFC2E7FF), shape = CircleShape),
+                        .background(color = CoralSurface, shape = CircleShape)
+                        .border(1.dp, CoralSecondary.copy(alpha = 0.5f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Sensors,
                         contentDescription = null,
-                        tint = Color(0xFF00668B),
-                        modifier = Modifier.size(36.dp)
+                        tint = CoralBright,
+                        modifier = Modifier.size(34.dp)
                     )
                 }
 
@@ -243,15 +266,15 @@ fun ClientPairingScreen(
 
                 Text(
                     text = "Link to Host Device",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
                 )
 
                 Text(
                     text = "Point this camera at your Host phone's QR code to link and forward SMS instantly.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.5.sp,
+                    color = TextSecondary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 4.dp, start = 12.dp, end = 12.dp)
                 )
@@ -268,9 +291,9 @@ fun ClientPairingScreen(
                         }
                     },
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00668B)),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = CoralSecondary, contentColor = Color.White),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.QrCodeScanner,
@@ -281,8 +304,8 @@ fun ClientPairingScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Scan Host QR Code to Connect",
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = Color.White
                     )
                 }
@@ -292,15 +315,17 @@ fun ClientPairingScreen(
                 OutlinedButton(
                     onClick = { showManualCodeDialog = true },
                     shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Keyboard,
                         contentDescription = null,
+                        tint = TextPrimary,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Enter Host Code Manually", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Enter Host Code Manually", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -312,18 +337,18 @@ fun ClientPairingScreen(
                 ) {
                     HorizontalDivider(
                         modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                        color = ObsidianBorder
                     )
                     Text(
                         text = "  OR SHOW CODE TO HOST  ",
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextMuted,
                         letterSpacing = 0.8.sp
                     )
                     HorizontalDivider(
                         modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                        color = ObsidianBorder
                     )
                 }
 
@@ -331,8 +356,8 @@ fun ClientPairingScreen(
 
                 Card(
                     shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCAC4D0)),
+                    colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+                    border = BorderStroke(1.dp, ObsidianBorder),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -346,18 +371,17 @@ fun ClientPairingScreen(
                             is PairingState.Loading, is PairingState.Idle -> {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(44.dp),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = EmeraldPrimary,
                                     strokeWidth = 3.dp
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Text(
                                     text = "Generating secure pairing session...",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF49454F)
+                                    fontSize = 13.5.sp,
+                                    color = TextSecondary
                                 )
                             }
                             is PairingState.CodeGenerated -> {
-                                // Code display boxes - responsive weights that adapt perfectly to any device screen size
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -366,14 +390,11 @@ fun ClientPairingScreen(
                                     current.code.forEach { char ->
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
-                                            color = Color(0xFFEADDFF),
-                                            border = androidx.compose.foundation.BorderStroke(
-                                                1.5.dp,
-                                                Color(0xFF6750A4)
-                                            ),
+                                            color = EmeraldSurface,
+                                            border = BorderStroke(1.5.dp, EmeraldPrimary),
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .heightIn(min = 46.dp, max = 56.dp)
+                                                .heightIn(min = 48.dp, max = 56.dp)
                                         ) {
                                             Box(contentAlignment = Alignment.Center) {
                                                 Text(
@@ -381,7 +402,7 @@ fun ClientPairingScreen(
                                                     fontSize = 22.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     fontFamily = FontFamily.Monospace,
-                                                    color = Color(0xFF21005D)
+                                                    color = EmeraldBright
                                                 )
                                             }
                                         }
@@ -390,7 +411,6 @@ fun ClientPairingScreen(
 
                                 Spacer(modifier = Modifier.height(20.dp))
 
-                                // QR Code for scanning by Host phone
                                 val qrBitmap = remember(current.code) {
                                     QrCodeUtils.generateQrBitmap(
                                         content = QrCodeUtils.encodeCode(current.code),
@@ -398,10 +418,10 @@ fun ClientPairingScreen(
                                     ).asImageBitmap()
                                 }
                                 Surface(
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(20.dp),
                                     color = Color.White,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCAC4D0)),
-                                    modifier = Modifier.sizeIn(maxWidth = 190.dp, maxHeight = 190.dp).aspectRatio(1f)
+                                    border = BorderStroke(2.5.dp, EmeraldPrimary),
+                                    modifier = Modifier.sizeIn(maxWidth = 196.dp, maxHeight = 196.dp).aspectRatio(1f)
                                 ) {
                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(12.dp)) {
                                         Image(
@@ -415,14 +435,13 @@ fun ClientPairingScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = "Scan with Host phone to pair instantly",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF49454F),
+                                    fontSize = 12.sp,
+                                    color = TextSecondary,
                                     textAlign = TextAlign.Center
                                 )
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
-                                // Countdown timer
                                 val minutes = current.remainingSeconds / 60
                                 val secs = current.remainingSeconds % 60
                                 val timeFormatted = String.format("%02d:%02d", minutes, secs)
@@ -434,14 +453,14 @@ fun ClientPairingScreen(
                                     Icon(
                                         imageVector = Icons.Default.Timer,
                                         contentDescription = null,
-                                        tint = if (current.remainingSeconds < 60) Color(0xFFEF4444) else Color(0xFF6750A4),
+                                        tint = if (current.remainingSeconds < 60) CrimsonError else EmeraldBright,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "Expires in $timeFormatted",
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (current.remainingSeconds < 60) Color(0xFFEF4444) else Color(0xFF49454F),
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (current.remainingSeconds < 60) CrimsonError else TextPrimary,
                                         fontSize = 14.sp
                                     )
                                 }
@@ -450,7 +469,8 @@ fun ClientPairingScreen(
 
                                 Surface(
                                     shape = RoundedCornerShape(100.dp),
-                                    color = Color(0xFFF3EDF7)
+                                    color = ObsidianSurface,
+                                    border = BorderStroke(1.dp, ObsidianBorder)
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -458,15 +478,15 @@ fun ClientPairingScreen(
                                     ) {
                                         CircularProgressIndicator(
                                             modifier = Modifier.size(12.dp),
-                                            color = Color(0xFF6750A4),
+                                            color = EmeraldBright,
                                             strokeWidth = 2.dp
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = "Waiting for Host to connect...",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Medium,
-                                            color = Color(0xFF49454F)
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextSecondary
                                         )
                                     }
                                 }
@@ -475,32 +495,32 @@ fun ClientPairingScreen(
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Success",
-                                    tint = Color(0xFF10B981),
+                                    tint = EmeraldBright,
                                     modifier = Modifier.size(56.dp)
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
                                     text = "Successfully Paired!",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF10B981)
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = EmeraldBright
                                 )
                             }
                             is PairingState.Error -> {
                                 Text(
                                     text = current.message,
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = CrimsonError,
+                                    fontSize = 14.sp,
                                     textAlign = TextAlign.Center
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Button(
                                     onClick = { viewModel.generateClientCode() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg)
                                 ) {
                                     Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Regenerate Code")
+                                    Text("Regenerate Code", fontWeight = FontWeight.ExtraBold)
                                 }
                             }
                         }
@@ -512,14 +532,14 @@ fun ClientPairingScreen(
                 OutlinedButton(
                     onClick = { viewModel.generateClientCode() },
                     shape = RoundedCornerShape(14.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCAC4D0)),
+                    border = BorderStroke(1.dp, ObsidianBorder),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("regenerate_code_button")
                 ) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null, tint = EmeraldBright)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Regenerate Pairing Code", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text("Regenerate Pairing Code", color = EmeraldBright, fontWeight = FontWeight.Bold)
                 }
             }
         }

@@ -1,172 +1,218 @@
 package com.example.ui.host
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
-import android.text.format.DateUtils
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.CallMade
-import androidx.compose.material.icons.filled.CallMissed
-import androidx.compose.material.icons.filled.CallReceived
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.PhoneDisabled
-import androidx.compose.material.icons.filled.SimCard
-import com.example.SmsBridgeApp
-import com.example.domain.model.CallRecord
-import com.example.domain.model.CallType
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CallMade
+import androidx.compose.material.icons.filled.CallMissed
+import androidx.compose.material.icons.filled.CallReceived
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FlipToFront
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.PhoneDisabled
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
-import com.example.util.OtpExtractor
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.R
+import com.example.SmsBridgeApp
+import com.example.domain.model.CallRecord
+import com.example.domain.model.CallType
 import com.example.domain.model.ConnectedDevice
 import com.example.domain.model.SmsMessage
-import com.example.ui.theme.FabAccentBg
-import com.example.ui.theme.FabAccentContent
-import com.example.ui.theme.StatusOfflineBg
-import com.example.ui.theme.StatusOfflineDot
-import com.example.ui.theme.StatusOfflineText
-import com.example.ui.theme.StatusOnlineBg
-import com.example.ui.theme.StatusOnlineDot
-import com.example.ui.theme.StatusOnlineText
+import com.example.domain.model.UserRole
+import com.example.ui.components.PermissionConciergeSheet
+import com.example.ui.components.PermissionStatusBanner
+import com.example.ui.components.PermissionStepItem
+import com.example.ui.pairing.QrScannerOverlay
+import com.example.ui.theme.AmberSurface
+import com.example.ui.theme.AmberWarning
+import com.example.ui.theme.CoralBright
+import com.example.ui.theme.CoralSecondary
+import com.example.ui.theme.CoralSurface
+import com.example.ui.theme.CrimsonError
+import com.example.ui.theme.CrimsonSurface
+import com.example.ui.theme.CyanSurface
+import com.example.ui.theme.CyanTertiary
+import com.example.ui.theme.EmeraldBright
+import com.example.ui.theme.EmeraldPrimary
+import com.example.ui.theme.EmeraldSurface
+import com.example.ui.theme.ObsidianBg
+import com.example.ui.theme.ObsidianBorder
+import com.example.ui.theme.ObsidianCard
+import com.example.ui.theme.ObsidianElevated
+import com.example.ui.theme.ObsidianSurface
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
+import com.example.ui.theme.TextSecondary
+import com.example.ui.update.InAppUpdateDialog
+import com.example.util.AutoStartPermissionHelper
+import com.example.util.FloatingOtpManager
+import com.example.util.OtpExtractor
+import com.example.util.QrCodeUtils
+import com.example.util.ServiceStarter
+import com.example.util.UpdateChecker
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-import androidx.compose.material.icons.filled.SystemUpdate
-import com.example.ui.update.InAppUpdateDialog
-import com.example.util.UpdateChecker
-import kotlinx.coroutines.launch
+private enum class HostBottomNavTab(val label: String, val icon: ImageVector) {
+    INBOX("Inbox", Icons.Default.Sms),
+    CALLS("Calls", Icons.Default.Call),
+    DEVICES("Devices", Icons.Default.Devices),
+    HUB("Control Hub", Icons.Default.Tune)
+}
 
-import androidx.compose.foundation.Image
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
-import com.example.R
-
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.FlipToFront
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.material.icons.filled.History
-import com.example.util.AutoStartPermissionHelper
-import com.example.util.FloatingOtpManager
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.runtime.saveable.rememberSaveable
-import com.example.ui.pairing.QrScannerOverlay
-import com.example.util.QrCodeUtils
-import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.ui.window.Dialog
+private enum class InboxFilterMode(val label: String) {
+    ALL("All SMS"),
+    UNREAD("Unread"),
+    OTP_ONLY("OTPs Only")
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -196,9 +242,7 @@ fun HostHomeScreen(
     val connectedDevices by viewModel.connectedDevices.collectAsStateWithLifecycle()
     val selectedDeviceFilter by viewModel.selectedDeviceFilter.collectAsStateWithLifecycle()
 
-    val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val rawCalls by viewModel.rawCalls.collectAsStateWithLifecycle()
-    val filteredCalls by viewModel.filteredCalls.collectAsStateWithLifecycle()
     val pagedCalls by viewModel.pagedCalls.collectAsStateWithLifecycle()
     val totalCallsCount by viewModel.totalCallsCount.collectAsStateWithLifecycle()
     val hasMoreCalls by viewModel.hasMoreCalls.collectAsStateWithLifecycle()
@@ -206,39 +250,43 @@ fun HostHomeScreen(
     val unreadCallsCount by viewModel.unreadCallsCount.collectAsStateWithLifecycle()
     val hostPhoneNumber by viewModel.hostPhoneNumber.collectAsStateWithLifecycle()
 
-    val pullToRefreshState = rememberPullToRefreshState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val activity = context as? androidx.activity.ComponentActivity
+    val activity = context as? ComponentActivity
+
+    var currentBottomTab by rememberSaveable { mutableStateOf(HostBottomNavTab.INBOX) }
+    var inboxFilter by rememberSaveable { mutableStateOf(InboxFilterMode.ALL) }
 
     var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
-    var isBatteryOptimized by remember { mutableStateOf(AutoStartPermissionHelper.isBatteryOptimized(context)) }
-    var showBatchDeleteDialog by remember { mutableStateOf(false) }
-    var showBatchDeleteCallsDialog by remember { mutableStateOf(false) }
-    var messageToDeleteSingle by remember { mutableStateOf<String?>(null) }
-    var callToDeleteSingle by remember { mutableStateOf<String?>(null) }
-    var callHistoryTarget by remember { mutableStateOf<CallRecord?>(null) }
-    var showOverlayPermissionDialog by remember { mutableStateOf(false) }
+    var isBatteryExempt by remember { mutableStateOf(!AutoStartPermissionHelper.isBatteryOptimized(context)) }
     var hasOverlayPermission by remember { mutableStateOf(FloatingOtpManager.canDrawOverlays(context)) }
-
-    var isFullscreenView by rememberSaveable { mutableStateOf(false) }
-    var showHostQrDialog by remember { mutableStateOf(false) }
-    var showQrScanner by remember { mutableStateOf(false) }
-    var showMoreMenu by remember { mutableStateOf(false) }
-    var messageDetailTarget by remember { mutableStateOf<SmsMessage?>(null) }
-
-    var hasCameraPermission by remember {
+    var hasNotificationPermission by remember {
         mutableStateOf(
-            androidx.core.content.ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.CAMERA
-            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            } else true
         )
     }
 
-    val cameraPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    // Slide-Up Sheets & Dialog States
+    var showHostQrSheet by rememberSaveable { mutableStateOf(false) }
+    var showPermissionSheet by rememberSaveable { mutableStateOf(false) }
+    var showQrScanner by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
+    var showBatchDeleteDialog by remember { mutableStateOf(false) }
+    var showBatchDeleteCallsDialog by remember { mutableStateOf(false) }
+    var messageDetailTarget by remember { mutableStateOf<SmsMessage?>(null) }
+    var callHistoryTarget by remember { mutableStateOf<CallRecord?>(null) }
+
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasCameraPermission = granted
         if (granted) {
@@ -248,12 +296,105 @@ fun HostHomeScreen(
         }
     }
 
-    BackHandler(enabled = isSelectionMode || isCallSelectionMode || isFullscreenView) {
-        if (isCallSelectionMode) viewModel.exitCallSelectionMode()
-        else if (isSelectionMode) viewModel.exitSelectionMode()
-        else if (isFullscreenView) isFullscreenView = false
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasNotificationPermission = granted
     }
 
+    BackHandler(enabled = isSelectionMode || isCallSelectionMode || currentBottomTab != HostBottomNavTab.INBOX) {
+        when {
+            isCallSelectionMode -> viewModel.exitCallSelectionMode()
+            isSelectionMode -> viewModel.exitSelectionMode()
+            else -> currentBottomTab = HostBottomNavTab.INBOX
+        }
+    }
+
+    // Safely start Host foreground listener service without crash risk
+    LaunchedEffect(Unit) {
+        ServiceStarter.startServiceSafely(context, UserRole.HOST)
+        val info = UpdateChecker.checkForUpdates(context)
+        if (info.hasUpdate) {
+            availableUpdate = info
+        }
+        activity?.intent?.let { intent ->
+            if (intent.getStringExtra("selected_tab") == "calls") {
+                currentBottomTab = HostBottomNavTab.CALLS
+                viewModel.selectTab(HostTab.CALLS)
+                intent.removeExtra("selected_tab")
+            }
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasOverlayPermission = FloatingOtpManager.canDrawOverlays(context)
+                isBatteryExempt = !AutoStartPermissionHelper.isBatteryOptimized(context)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    hasNotificationPermission = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+                }
+                activity?.intent?.let { intent ->
+                    if (intent.getStringExtra("selected_tab") == "calls") {
+                        currentBottomTab = HostBottomNavTab.CALLS
+                        viewModel.selectTab(HostTab.CALLS)
+                        intent.removeExtra("selected_tab")
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val hostPermissionSteps = remember(hasNotificationPermission, hasOverlayPermission, isBatteryExempt) {
+        listOf(
+            PermissionStepItem(
+                id = "host_notif",
+                title = "Instant OTP & Call Alerts",
+                subtitle = "Shows heads-up notifications with 1-tap Copy OTP buttons",
+                icon = Icons.Default.Notifications,
+                isGranted = hasNotificationPermission,
+                isRequired = true,
+                actionLabel = "Allow",
+                onGrantClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+            ),
+            PermissionStepItem(
+                id = "host_battery",
+                title = "Unrestricted Background Sync",
+                subtitle = "Keeps live Host stream active even when screen is off",
+                icon = Icons.Default.BatteryChargingFull,
+                isGranted = isBatteryExempt,
+                isRequired = true,
+                actionLabel = "Exempt",
+                onGrantClick = {
+                    AutoStartPermissionHelper.requestIgnoreBatteryOptimizations(context)
+                }
+            ),
+            PermissionStepItem(
+                id = "host_overlay",
+                title = "Floating OTP Popup Window",
+                subtitle = "Truecaller-style OTP card over other apps for instant copy",
+                icon = Icons.Default.FlipToFront,
+                isGranted = hasOverlayPermission,
+                isRequired = false,
+                actionLabel = "Enable",
+                onGrantClick = {
+                    FloatingOtpManager.openOverlaySettings(context)
+                }
+            )
+        )
+    }
+
+    // CameraX QR Scanner Overlay
     if (showQrScanner) {
         QrScannerOverlay(
             instructionText = "Point camera at the Client's QR Code",
@@ -266,7 +407,7 @@ fun HostHomeScreen(
                         val pairingRepo = app?.pairingRepository ?: SmsBridgeApp.instance.pairingRepository
                         val res = pairingRepo.pairAsHost(parsed)
                         if (res.isSuccess) {
-                            Toast.makeText(context, "Successfully paired with ${res.getOrNull()}!", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Paired with ${res.getOrNull()}!", Toast.LENGTH_LONG).show()
                         } else {
                             Toast.makeText(context, "Pairing failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                         }
@@ -281,88 +422,7 @@ fun HostHomeScreen(
         return
     }
 
-    var hasNotificationPermission by remember {
-        mutableStateOf(
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                androidx.core.content.ContextCompat.checkSelfPermission(
-                    context,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            } else true
-        )
-    }
-
-    val notifPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasNotificationPermission = granted
-    }
-
-    var isHostSetupHubExpanded by remember { mutableStateOf(!hasNotificationPermission) }
-
-    LaunchedEffect(Unit) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
-            notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-        activity?.intent?.let { intent ->
-            if (intent.getStringExtra("selected_tab") == "calls") {
-                viewModel.selectTab(HostTab.CALLS)
-                intent.removeExtra("selected_tab")
-            }
-        }
-    }
-
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                hasOverlayPermission = FloatingOtpManager.canDrawOverlays(context)
-                if (hasOverlayPermission && showOverlayPermissionDialog) {
-                    showOverlayPermissionDialog = false
-                    viewModel.setFloatingOtpEnabled(true)
-                }
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    hasNotificationPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-                        context,
-                        android.Manifest.permission.POST_NOTIFICATIONS
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                }
-                activity?.intent?.let { intent ->
-                    if (intent.getStringExtra("selected_tab") == "calls") {
-                        viewModel.selectTab(HostTab.CALLS)
-                        intent.removeExtra("selected_tab")
-                    }
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    // Automatic update check in background on launch
-    LaunchedEffect(Unit) {
-        val info = UpdateChecker.checkForUpdates(context)
-        if (info.hasUpdate) {
-            availableUpdate = info
-        }
-    }
-
-    // Ensure persistent real-time listener service is active on Host
-    LaunchedEffect(Unit) {
-        try {
-            val serviceIntent = android.content.Intent(context, com.example.service.SmsBridgeService::class.java).apply {
-                putExtra("role_key", com.example.domain.model.UserRole.HOST.key)
-            }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
-            } else {
-                context.startService(serviceIntent)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("HostHomeScreen", "Failed to start SmsBridgeService for Host", e)
-        }
-    }
-
+    // ── Modals & Slide-Up Sheets ──────────────────────────────────────────────
     if (availableUpdate != null) {
         InAppUpdateDialog(
             updateInfo = availableUpdate!!,
@@ -370,17 +430,101 @@ fun HostHomeScreen(
         )
     }
 
-    // Confirmation dialog for batch delete
+    if (showPermissionSheet) {
+        PermissionConciergeSheet(
+            title = "Host Permission Concierge",
+            subtitle = "Enable instant OTP notifications & floating overlays",
+            steps = hostPermissionSteps,
+            onGrantAllQuickly = if (!hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                { notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+            } else null,
+            onDismiss = { showPermissionSheet = false }
+        )
+    }
+
+    if (showHostQrSheet) {
+        HostQrModalSheet(
+            hostCode = hostCode,
+            hostPhoneNumber = hostPhoneNumber,
+            onUpdateHostPhoneNumber = { viewModel.updateHostPhoneNumber(it) },
+            onCopyCode = {
+                if (hostCode.isNotEmpty()) {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Host Code", hostCode))
+                    Toast.makeText(context, "Copied Host Code: $hostCode", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onScanClient = {
+                showHostQrSheet = false
+                if (hasCameraPermission) {
+                    showQrScanner = true
+                } else {
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+            },
+            onDismiss = { showHostQrSheet = false }
+        )
+    }
+
+    if (messageDetailTarget != null) {
+        MessageDetailModalSheet(
+            message = messageDetailTarget!!,
+            onCopyOtp = { otp ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("OTP", otp))
+                Toast.makeText(context, "Copied OTP: $otp", Toast.LENGTH_SHORT).show()
+            },
+            onCopyFull = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("SMS Content", messageDetailTarget!!.body))
+                Toast.makeText(context, "Full message copied", Toast.LENGTH_SHORT).show()
+            },
+            onDelete = {
+                val id = messageDetailTarget!!.messageId
+                messageDetailTarget = null
+                viewModel.deleteSingleMessage(id) {
+                    Toast.makeText(context, "Message deleted", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDismiss = { messageDetailTarget = null }
+        )
+    }
+
+    if (callHistoryTarget != null) {
+        CallHistoryModalSheet(
+            targetCall = callHistoryTarget!!,
+            allCalls = rawCalls,
+            onCallBack = { number ->
+                try {
+                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${number.trim()}")).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(dialIntent)
+                } catch (_: Exception) {}
+            },
+            onCopyNumber = { number ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", number))
+                Toast.makeText(context, "Copied: $number", Toast.LENGTH_SHORT).show()
+            },
+            onDeleteSingle = { id ->
+                callHistoryTarget = null
+                viewModel.deleteSingleCall(id) {
+                    Toast.makeText(context, "Call log deleted", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDismiss = { callHistoryTarget = null }
+        )
+    }
+
     if (showBatchDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showBatchDeleteDialog = false },
-            title = { Text("Delete Selected Messages?", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "Are you sure you want to delete ${selectedMessageIds.size} selected message(s)? This will permanently remove them from both this device and the cloud database.",
-                    fontSize = 14.sp
-                )
-            },
+            containerColor = ObsidianSurface,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary,
+            title = { Text("Delete ${selectedMessageIds.size} Messages?", fontWeight = FontWeight.ExtraBold) },
+            text = { Text("This permanently deletes the selected messages from this device and cloud storage.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -389,3636 +533,855 @@ fun HostHomeScreen(
                         }
                         showBatchDeleteDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonError, contentColor = Color.White)
                 ) {
-                    Text("Delete Permanently", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Delete", fontWeight = FontWeight.ExtraBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showBatchDeleteDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel", color = TextSecondary)
                 }
             }
         )
     }
 
-    // Confirmation dialog for single delete
-    if (messageToDeleteSingle != null) {
-        AlertDialog(
-            onDismissRequest = { messageToDeleteSingle = null },
-            title = { Text("Delete Message?", fontWeight = FontWeight.Bold) },
-            text = { Text("Delete this message permanently from device and cloud database?", fontSize = 14.sp) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        messageToDeleteSingle?.let { msgId ->
-                            viewModel.deleteSingleMessage(msgId) {
-                                Toast.makeText(context, "Message deleted", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        messageToDeleteSingle = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
-                ) {
-                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { messageToDeleteSingle = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // Confirmation dialog for single call delete
-    if (callToDeleteSingle != null) {
-        AlertDialog(
-            onDismissRequest = { callToDeleteSingle = null },
-            title = { Text("Delete Call Record?", fontWeight = FontWeight.Bold) },
-            text = { Text("Delete this call record permanently from device and cloud database?", fontSize = 14.sp) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        callToDeleteSingle?.let { callId: String ->
-                            viewModel.deleteSingleCall(callId) {
-                                Toast.makeText(context, "Call record deleted", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        callToDeleteSingle = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
-                ) {
-                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { callToDeleteSingle = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // Confirmation dialog for batch delete calls
     if (showBatchDeleteCallsDialog) {
         AlertDialog(
             onDismissRequest = { showBatchDeleteCallsDialog = false },
-            title = { Text("Delete Selected Calls?", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "Are you sure you want to delete ${selectedCallIds.size} selected call record(s)? This will permanently remove them from both this device and the cloud database.",
-                    fontSize = 14.sp
-                )
-            },
+            containerColor = ObsidianSurface,
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary,
+            title = { Text("Delete ${selectedCallIds.size} Call Logs?", fontWeight = FontWeight.ExtraBold) },
+            text = { Text("This permanently deletes the selected call logs from this device and cloud storage.") },
             confirmButton = {
                 Button(
                     onClick = {
                         viewModel.deleteSelectedCalls {
-                            Toast.makeText(context, "Deleted selected call records", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Deleted selected calls", Toast.LENGTH_SHORT).show()
                         }
                         showBatchDeleteCallsDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonError, contentColor = Color.White)
                 ) {
-                    Text("Delete Permanently", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Delete", fontWeight = FontWeight.ExtraBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showBatchDeleteCallsDialog = false }) {
-                    Text("Cancel")
+                    Text("Cancel", color = TextSecondary)
                 }
             }
         )
     }
 
-    // Call History Dialog
-    if (callHistoryTarget != null) {
-        CallHistoryDialog(
-            targetCall = callHistoryTarget!!,
-            allCalls = rawCalls,
-            onDismiss = { callHistoryTarget = null },
-            onCallBack = { number ->
-                try {
-                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${number.trim()}")).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(dialIntent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Cannot open dialer: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            },
-            onCopyNumber = { number ->
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", number))
-                Toast.makeText(context, "Copied: $number", Toast.LENGTH_SHORT).show()
-            },
-            onDeleteLogs = { ids ->
-                viewModel.deleteMultipleCallIds(ids) {
-                    callHistoryTarget = null
-                    Toast.makeText(context, "Deleted ${ids.size} call log(s)", Toast.LENGTH_SHORT).show()
-                }
-            }
-        )
-    }
-
-    // Host QR Code Dialog
-    if (showHostQrDialog) {
-        HostQrCodeDialog(
-            hostCode = hostCode,
-            hostPhoneNumber = hostPhoneNumber,
-            onUpdateHostPhoneNumber = { viewModel.updateHostPhoneNumber(it) },
-            onDismiss = { showHostQrDialog = false },
-            onScanClient = {
-                showHostQrDialog = false
-                if (hasCameraPermission) {
-                    showQrScanner = true
-                } else {
-                    cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
-                }
-            },
-            onCopyCode = {
-                if (hostCode.isNotEmpty()) {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Host Code", hostCode))
-                    Toast.makeText(context, "Host Code copied: $hostCode", Toast.LENGTH_SHORT).show()
-                }
-            }
-        )
-    }
-
-    // Message Full-Screen Broad View Dialog
-    if (messageDetailTarget != null) {
-        MessageFullScreenDialog(
-            message = messageDetailTarget!!,
-            onDismiss = { messageDetailTarget = null },
-            onCopy = {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("SMS Content", messageDetailTarget!!.body))
-                Toast.makeText(context, "Copied SMS to clipboard", Toast.LENGTH_SHORT).show()
-            },
-            onDelete = {
-                val idToDelete = messageDetailTarget!!.messageId
-                messageDetailTarget = null
-                messageToDeleteSingle = idToDelete
-            }
-        )
-    }
-
-    // Permission Dialog for Display Over Other Apps
-    if (showOverlayPermissionDialog) {
-        AlertDialog(
-            onDismissRequest = { showOverlayPermissionDialog = false },
-            title = { Text("Display Over Other Apps", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "To show Truecaller-style floating OTP popups over other apps when SMS arrives, Android requires the 'Display over other apps' permission. Tap 'Open Settings' to grant it.",
-                    fontSize = 14.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showOverlayPermissionDialog = false
-                        FloatingOtpManager.openOverlaySettings(context)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
-                ) {
-                    Text("Open Settings", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showOverlayPermissionDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
+    // ── Main Obsidian Scaffold ────────────────────────────────────────────────
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
+        containerColor = ObsidianBg,
         topBar = {
-            Column {
-                val inSelection = if (selectedTab == HostTab.CALLS) isCallSelectionMode else isSelectionMode
-                val selectedCount = if (selectedTab == HostTab.CALLS) selectedCallIds.size else selectedMessageIds.size
-
-                if (inSelection) {
-                    // Contextual Multi-Select Top App Bar
-                    TopAppBar(
-                        title = {
-                            Text(
-                                text = "$selectedCount Selected",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                        },
-                        navigationIcon = {
-                            IconButton(onClick = {
-                                if (selectedTab == HostTab.CALLS) {
-                                    viewModel.exitCallSelectionMode()
-                                } else {
-                                    viewModel.exitSelectionMode()
-                                }
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Exit Selection",
-                                    tint = MaterialTheme.colorScheme.onBackground
-                                )
+            if (isSelectionMode || isCallSelectionMode) {
+                val selectedCount = if (isCallSelectionMode) selectedCallIds.size else selectedMessageIds.size
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(
+                            onClick = {
+                                if (isCallSelectionMode) viewModel.exitCallSelectionMode()
+                                else viewModel.exitSelectionMode()
                             }
-                        },
-                        actions = {
-                            IconButton(
-                                onClick = {
-                                    if (selectedTab == HostTab.CALLS) {
-                                        viewModel.selectAllCalls(pagedCalls.map { it.callId })
-                                    } else {
-                                        viewModel.selectAll(pagedMessages.map { it.messageId })
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SelectAll,
-                                    contentDescription = "Select All",
-                                    tint = if (selectedTab == HostTab.CALLS) Color(0xFF0284C7) else MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    if (selectedTab == HostTab.CALLS) {
-                                        if (selectedCallIds.isNotEmpty()) {
-                                            showBatchDeleteCallsDialog = true
-                                        }
-                                    } else {
-                                        if (selectedMessageIds.isNotEmpty()) {
-                                            showBatchDeleteDialog = true
-                                        }
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Delete Selected",
-                                    tint = Color(0xFFDC2626)
-                                )
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = TextPrimary)
+                        }
+                    },
+                    title = {
+                        Text(
+                            text = "$selectedCount Selected",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 18.sp,
+                            color = TextPrimary
                         )
-                    )
-                } else {
-                    // Standard Top App Bar
-                    TopAppBar(
-                        title = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(
-                                            color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(10.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Sensors,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                if (isCallSelectionMode) {
+                                    viewModel.selectAllCalls(pagedCalls.map { it.callId })
+                                } else {
+                                    viewModel.selectAll(pagedMessages.map { it.messageId })
                                 }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "SMS Bridge",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp,
-                                    letterSpacing = (-0.3).sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onBackground
+                            }
+                        ) {
+                            Icon(Icons.Default.SelectAll, contentDescription = "Select All", tint = EmeraldBright)
+                        }
+                        IconButton(
+                            onClick = {
+                                if (isCallSelectionMode) showBatchDeleteCallsDialog = true
+                                else showBatchDeleteDialog = true
+                            }
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete Selected", tint = CrimsonError)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = ObsidianCard)
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .background(
+                                        Brush.linearGradient(listOf(EmeraldPrimary, Color(0xFF059669))),
+                                        RoundedCornerShape(12.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PhoneAndroid,
+                                    contentDescription = null,
+                                    tint = ObsidianBg,
+                                    modifier = Modifier.size(21.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(100.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                ) {
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "HOST",
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 10.sp,
+                                        text = "Host Hub",
                                         fontWeight = FontWeight.ExtraBold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        fontSize = 18.sp,
+                                        color = TextPrimary
                                     )
-                                }
-                                if (selectedTab == HostTab.MESSAGES && unreadCount > 0) {
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Surface(
                                         shape = RoundedCornerShape(100.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
-                                    ) {
-                                        Text(
-                                            text = "$unreadCount new",
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        color = if (isLiveConnected) EmeraldPrimary.copy(alpha = 0.18f) else AmberSurface,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isLiveConnected) EmeraldPrimary.copy(alpha = 0.5f) else AmberWarning.copy(alpha = 0.5f)
                                         )
-                                    }
-                                } else if (selectedTab == HostTab.CALLS && unreadCallsCount > 0) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(100.dp),
-                                        color = Color(0xFFFEE2E2)
                                     ) {
                                         Text(
-                                            text = "$unreadCallsCount new",
-                                            color = Color(0xFFDC2626),
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            text = if (isLiveConnected) "LIVE" else "READY",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isLiveConnected) EmeraldBright else AmberWarning,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
+                                Text(
+                                    text = clientDeviceName,
+                                    fontSize = 11.5.sp,
+                                    color = if (isLiveConnected) EmeraldBright else TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
-                        },
-                        actions = {
-                            if (selectedTab == HostTab.MESSAGES && unreadCount > 0) {
-                                IconButton(
-                                    onClick = { viewModel.markAllAsRead() },
-                                    modifier = Modifier.testTag("mark_all_read_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DoneAll,
-                                        contentDescription = "Mark all messages as read",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            } else if (selectedTab == HostTab.CALLS && unreadCallsCount > 0) {
-                                IconButton(
-                                    onClick = { viewModel.markAllCallsAsRead() },
-                                    modifier = Modifier.testTag("mark_all_calls_read_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DoneAll,
-                                        contentDescription = "Mark all calls as read",
-                                        tint = Color(0xFFDC2626)
-                                    )
-                                }
-                            }
-
-                            // Walkie-Talkie Audio Feature Button
-                            IconButton(
-                                onClick = onOpenWalkieTalkie,
-                                modifier = Modifier.testTag("host_walkie_talkie_button")
+                        }
+                    },
+                    actions = {
+                        // Host Code / QR Quick Pill
+                        Surface(
+                            onClick = { showHostQrSheet = true },
+                            shape = RoundedCornerShape(100.dp),
+                            color = ObsidianCard,
+                            border = BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.45f)),
+                            modifier = Modifier.testTag("host_qr_code_button")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(
-                                            color = MaterialTheme.colorScheme.primaryContainer,
-                                            shape = CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Mic,
-                                        contentDescription = "Walkie-Talkie (Push-to-Talk Audio)",
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.QrCode,
+                                    contentDescription = "Host QR Code",
+                                    tint = EmeraldBright,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = hostCode.ifBlank { "PAIR" },
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = TextPrimary
+                                )
                             }
+                        }
 
-                            // Overflow 3-dots Menu for Secondary Options
-                            Box {
-                                IconButton(
-                                    onClick = { showMoreMenu = true },
-                                    modifier = Modifier.testTag("host_more_options_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MoreVert,
-                                        contentDescription = "More Options",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = showMoreMenu,
-                                    onDismissRequest = { showMoreMenu = false }
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Pairing QR Code") },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.QrCode,
-                                                contentDescription = null,
-                                                tint = Color(0xFF6750A4)
-                                            )
-                                        },
-                                        onClick = {
-                                            showMoreMenu = false
-                                            showHostQrDialog = true
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Check for Updates") },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.SystemUpdate,
-                                                contentDescription = null
-                                            )
-                                        },
-                                        onClick = {
-                                            showMoreMenu = false
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        // Walkie-Talkie Button
+                        IconButton(
+                            onClick = onOpenWalkieTalkie,
+                            modifier = Modifier.testTag("host_walkie_talkie_button")
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .background(CyanSurface, CircleShape)
+                                    .border(1.dp, CyanTertiary.copy(alpha = 0.4f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Walkie-Talkie",
+                                    tint = CyanTertiary,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // Switch Role Button
+                        IconButton(
+                            onClick = { viewModel.switchRole(onChangeRole) },
+                            modifier = Modifier.testTag("switch_role_button")
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .background(ObsidianCard, CircleShape)
+                                    .border(1.dp, ObsidianBorder, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = "Switch Role",
+                                    tint = TextPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        // Overflow Menu
+                        Box {
+                            IconButton(onClick = { showMoreMenu = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = TextPrimary)
+                            }
+                            DropdownMenu(
+                                expanded = showMoreMenu,
+                                onDismissRequest = { showMoreMenu = false },
+                                containerColor = ObsidianCard
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Mark All Read", color = TextPrimary) },
+                                    leadingIcon = { Icon(Icons.Default.DoneAll, null, tint = EmeraldBright) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        viewModel.markAllAsRead()
+                                        viewModel.markAllCallsAsRead()
+                                        Toast.makeText(context, "All items marked as read", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Permission Concierge", color = TextPrimary) },
+                                    leadingIcon = { Icon(Icons.Default.Shield, null, tint = CoralBright) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        showPermissionSheet = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Switch to Client Mode", color = TextPrimary) },
+                                    leadingIcon = { Icon(Icons.Default.SwapHoriz, null, tint = CyanTertiary) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        viewModel.switchRole(onChangeRole)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (isCheckingUpdate) "Checking Update..." else "Check for App Update", color = TextPrimary) },
+                                    leadingIcon = { Icon(Icons.Default.SystemUpdate, null, tint = EmeraldBright) },
+                                    onClick = {
+                                        showMoreMenu = false
+                                        if (!isCheckingUpdate) {
+                                            isCheckingUpdate = true
                                             scope.launch {
-                                                isCheckingUpdate = true
-                                                Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
                                                 val info = UpdateChecker.checkForUpdates(context)
                                                 isCheckingUpdate = false
                                                 if (info.hasUpdate) {
                                                     availableUpdate = info
                                                 } else {
-                                                    Toast.makeText(context, "You are using the latest version (v${info.currentVersion})", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "Up to date (${info.currentVersion})", Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("Switch to Client Mode") },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = Icons.Default.SwapHoriz,
-                                                contentDescription = null
-                                            )
-                                        },
-                                        onClick = {
-                                            showMoreMenu = false
-                                            viewModel.switchRole(onChangeRole)
-                                        },
-                                        modifier = Modifier.testTag("host_switch_role_button")
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(if (isFullscreenView) "Show Setup Header" else "Collapse Setup Header") },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = if (isFullscreenView) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                                                contentDescription = null
-                                            )
-                                        },
-                                        onClick = {
-                                            showMoreMenu = false
-                                            isFullscreenView = !isFullscreenView
-                                        }
-                                    )
-                                }
-                            }
-
-                            // Developer Profile Avatar
-                            IconButton(
-                                onClick = onOpenDeveloperProfile,
-                                modifier = Modifier.testTag("host_developer_profile_button")
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .background(
-                                            Brush.sweepGradient(
-                                                listOf(
-                                                    Color(0xFF9333EA),
-                                                    Color(0xFFC084FC),
-                                                    Color(0xFF6750A4),
-                                                    Color(0xFF9333EA)
-                                                )
-                                            ),
-                                            CircleShape
-                                        )
-                                        .padding(2.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Image(
-                                        painter = painterResource(id = R.drawable.dev_subhojit),
-                                        contentDescription = "Subhojit Paul - Developer Profile",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(CircleShape)
-                                    )
-                                }
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.background
-                        )
-                    )
-                }
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-                    thickness = 1.dp
-                )
-            }
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.refresh() },
-                containerColor = FabAccentBg,
-                contentColor = FabAccentContent,
-                shape = RoundedCornerShape(16.dp),
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp),
-                modifier = Modifier.testTag("host_refresh_fab")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh SMS",
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        },
-        modifier = Modifier.fillMaxSize()
-    ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = { viewModel.refresh() },
-            state = pullToRefreshState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (isFullscreenView) {
-                    // Sleek 1-line compact header strip in Fullscreen mode
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(if (isLiveConnected) StatusOnlineDot else StatusOfflineDot, CircleShape)
+                                    }
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Host: $hostCode",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 13.sp,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.clickable { showHostQrDialog = true }
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.QrCode,
-                                            contentDescription = "Show QR",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(
-                                            text = "QR",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "• $clientDeviceName",
-                                    fontSize = 11.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                modifier = Modifier.clickable { isFullscreenView = false }
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = "Expand Setup Cards",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = "Expand",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                } else {
-                // Host Code & Connection Banner
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = "THIS HOST CODE (SHARE WITH CLIENT)",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.8.sp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.clickable {
-                                            if (hostCode.isNotEmpty()) {
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                clipboard.setPrimaryClip(ClipData.newPlainText("Host Code", hostCode))
-                                                Toast.makeText(context, "Host Code copied: $hostCode", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    ) {
-                                        Text(
-                                            text = hostCode.ifEmpty { "Generating..." },
-                                            fontSize = 18.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.ContentCopy,
-                                            contentDescription = "Copy Host Code",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                        modifier = Modifier.clickable { showHostQrDialog = true }
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.QrCode,
-                                                contentDescription = "Show QR Code",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Show QR",
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Live status indicator chip
-                            Surface(
-                                shape = RoundedCornerShape(100.dp),
-                                color = if (isLiveConnected) StatusOnlineBg else StatusOfflineBg
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .background(
-                                                color = if (isLiveConnected) StatusOnlineDot else StatusOfflineDot,
-                                                shape = CircleShape
-                                            )
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (isLiveConnected) "LIVE" else "OFFLINE",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        letterSpacing = 0.5.sp,
-                                        color = if (isLiveConnected) StatusOnlineText else StatusOfflineText
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sensors,
-                                contentDescription = null,
-                                tint = if (isLiveConnected) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Client: $clientDeviceName",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (isLiveConnected) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // Connected Devices Panel — expandable per-device list
-                        if (connectedDevices.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "CONNECTED DEVICES (${connectedDevices.filter { it.active }.size})",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    letterSpacing = 0.8.sp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFF3E8FF),
-                                    modifier = Modifier.clickable {
-                                        if (hasCameraPermission) {
-                                            showQrScanner = true
-                                        } else {
-                                            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
-                                        }
-                                    }
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.QrCodeScanner,
-                                            contentDescription = "Scan Client QR",
-                                            tint = Color(0xFF7C3AED),
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "+ Pair via QR",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF7C3AED)
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            connectedDevices.filter { it.active }.forEach { device ->
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.PhoneAndroid,
-                                                contentDescription = null,
-                                                tint = Color(0xFF6750A4),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Column {
-                                                Text(
-                                                    text = device.clientDeviceName,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                val batText = device.batteryPercentage?.let { " · 🔋 $it%" } ?: ""
-                                                Text(
-                                                    text = "Last seen: ${device.lastSeenLabel()}$batText",
-                                                    fontSize = 10.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Color(0xFFE0F2FE),
-                                                modifier = Modifier.clickable {
-                                                    Toast.makeText(context, "Requesting live location from ${device.clientDeviceName}...", Toast.LENGTH_SHORT).show()
-                                                    viewModel.requestClientLocation(device.clientUid) { success ->
-                                                        if (!success) {
-                                                            Toast.makeText(context, "Failed to send location request", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                                }
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.LocationOn,
-                                                        contentDescription = null,
-                                                        tint = Color(0xFF0284C7),
-                                                        modifier = Modifier.size(12.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(3.dp))
-                                                    Text(
-                                                        text = "Location",
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color(0xFF0284C7)
-                                                    )
-                                                }
-                                            }
-
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Color(0xFFFEE2E2),
-                                                modifier = Modifier.clickable {
-                                                    viewModel.disconnectClient(device.clientUid)
-                                                }
-                                            ) {
-                                                Text(
-                                                    text = "Disconnect",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFDC2626),
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // If coordinates were received, display 1-tap Google Maps pill
-                                    if (!device.mapsUrl.isNullOrBlank()) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color(0xFFF0FDF4),
-                                            border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                DropdownMenuItem(
+                                    text = { Text("Developer Profile", color = TextPrimary) },
+                                    leadingIcon = {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.dev_subhojit),
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
                                             modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    try {
-                                                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(device.mapsUrl)).apply {
-                                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                                        }
-                                                        context.startActivity(mapIntent)
-                                                    } catch (e: Exception) {
-                                                        Toast.makeText(context, "Cannot open map: ${e.message}", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 8.dp, vertical = 5.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.LocationOn,
-                                                        contentDescription = null,
-                                                        tint = Color(0xFF16A34A),
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    val accText = device.accuracy?.toInt()?.let { " (±${it}m)" } ?: ""
-                                                    Text(
-                                                        text = "Live GPS Coordinates$accText",
-                                                        fontSize = 11.sp,
-                                                        color = Color(0xFF15803D),
-                                                        fontWeight = FontWeight.SemiBold
-                                                    )
-                                                }
-                                                Text(
-                                                    text = "Open Maps ↗",
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF16A34A),
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Unified Host Alerts & Permissions Hub
-                val isDarkTheme = isSystemInDarkTheme()
-                val isBatteryOrAutoStartOk = isAutoStartConfigured || (!isBatteryOptimized && !AutoStartPermissionHelper.isXiaomiOrRedmi())
-                val isOverlayOk = !isFloatingOtpEnabled || hasOverlayPermission
-                val isAllHostAlertsConfigured = hasNotificationPermission && isOverlayOk && isBatteryOrAutoStartOk
-
-                if (!isHostSetupHubExpanded && isAllHostAlertsConfigured) {
-                    // Compact Single-Line Status Pill
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isDarkTheme) Color(0xFF064E3B).copy(alpha = 0.25f) else Color(0xFFF0FDF4)
-                        ),
-                        border = BorderStroke(1.dp, if (isDarkTheme) Color(0xFF10B981).copy(alpha = 0.4f) else Color(0xFFBBF7D0)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .clickable { isHostSetupHubExpanded = true }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(Color(0xFF22C55E), CircleShape)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Host Alerts Active · Push Notifications ON" + if (isFloatingOtpEnabled) " · Floating OTP Ready" else "",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF15803D),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Settings",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF15803D)
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
-                                    contentDescription = "Expand Setup",
-                                    tint = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF15803D),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    // Full Unified Host Alerts & Permissions Hub Card
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                        ),
-                        border = BorderStroke(
-                            1.dp,
-                            if (!hasNotificationPermission) Color(0xFFF59E0B).copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp)
-                        ) {
-                            // Header
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .background(
-                                                if (!hasNotificationPermission) Color(0xFFFEF3C7) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                                CircleShape
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Notifications,
-                                            contentDescription = null,
-                                            tint = if (!hasNotificationPermission) Color(0xFFD97706) else MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
+                                                .size(22.dp)
+                                                .clip(CircleShape)
                                         )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = "Host Alerts & Permissions Hub",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Ensure instant OTP alerts and background sync work seamlessly",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                if (isAllHostAlertsConfigured) {
-                                    IconButton(
-                                        onClick = { isHostSetupHubExpanded = false },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.KeyboardArrowUp,
-                                            contentDescription = "Collapse",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), thickness = 1.dp)
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // 1. Instant Push Notifications (Android 13+)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "Push Notifications",
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        if (hasNotificationPermission) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = Color(0xFFDCFCE7)
-                                            ) {
-                                                Text(
-                                                    text = "ALLOWED",
-                                                    color = Color(0xFF16A34A),
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                                )
-                                            }
-                                        } else {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = Color(0xFFFEF3C7)
-                                            ) {
-                                                Text(
-                                                    text = "ACTION NEEDED",
-                                                    color = Color(0xFFD97706),
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Text(
-                                        text = "Sound & heads-up alerts when new client SMS or OTP arrives in background.",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        lineHeight = 14.sp
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                if (!hasNotificationPermission) {
-                                    Button(
-                                        onClick = {
-                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                                notifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                        modifier = Modifier.height(30.dp)
-                                    ) {
-                                        Text("Allow", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    }
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Permission Granted",
-                                        tint = Color(0xFF16A34A),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), thickness = 1.dp)
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // 2. Truecaller-Style Floating OTP Popup
-                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Floating OTP Popup (Truecaller Style)",
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Show a 1-tap copy card on top of other apps when bank OTP arrives.",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            lineHeight = 14.sp
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    Switch(
-                                        checked = isFloatingOtpEnabled,
-                                        onCheckedChange = { enable ->
-                                            if (enable) {
-                                                if (!FloatingOtpManager.canDrawOverlays(context)) {
-                                                    showOverlayPermissionDialog = true
-                                                } else {
-                                                    viewModel.setFloatingOtpEnabled(true)
-                                                    Toast.makeText(context, "Floating OTP overlay enabled", Toast.LENGTH_SHORT).show()
-                                                }
-                                            } else {
-                                                viewModel.setFloatingOtpEnabled(false)
-                                                Toast.makeText(context, "Floating OTP overlay disabled", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = Color(0xFF10B981)
-                                        )
-                                    )
-                                }
-
-                                if (isFloatingOtpEnabled) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = if (hasOverlayPermission) "Active · Displays over all apps" else "⚠️ Permission needed to display over apps",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (hasOverlayPermission) {
-                                                if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
-                                            } else {
-                                                Color(0xFFDC2626)
-                                            }
-                                        )
-
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (!hasOverlayPermission) {
-                                                Button(
-                                                    onClick = { showOverlayPermissionDialog = true },
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                                    modifier = Modifier.height(28.dp)
-                                                ) {
-                                                    Text("Grant Permission", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                                }
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                            }
-
-                                            OutlinedButton(
-                                                onClick = {
-                                                    if (!FloatingOtpManager.canDrawOverlays(context)) {
-                                                        showOverlayPermissionDialog = true
-                                                    } else {
-                                                        FloatingOtpManager.showFloatingOtp(
-                                                            context = context,
-                                                            sender = "Centru Bank",
-                                                            otp = "881231",
-                                                            formattedOtp = "881 231",
-                                                            timeString = "12:30 PM"
-                                                        )
-                                                    }
-                                                },
-                                                shape = RoundedCornerShape(8.dp),
-                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                                colors = ButtonDefaults.outlinedButtonColors(
-                                                    contentColor = if (isDarkTheme) Color(0xFF6EE7B7) else Color(0xFF059669)
-                                                ),
-                                                border = BorderStroke(1.dp, Color(0xFF10B981)),
-                                                modifier = Modifier.height(28.dp)
-                                            ) {
-                                                Text("Test Popup", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 3. Background Sync & Reliability (Xiaomi / Battery Exemption)
-                            if (!isAutoStartConfigured && (isBatteryOptimized || AutoStartPermissionHelper.isXiaomiOrRedmi())) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), thickness = 1.dp)
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = if (AutoStartPermissionHelper.isXiaomiOrRedmi()) "Xiaomi/Redmi Auto-Start" else "Background Battery Exemption",
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF92400E)
-                                        )
-                                        Text(
-                                            text = "Enable Auto-Start & set 'No restrictions' so push alerts arrive even after phone sleep.",
-                                            fontSize = 11.sp,
-                                            color = Color(0xFFB45309),
-                                            lineHeight = 14.sp
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.width(8.dp))
-
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Button(
-                                            onClick = {
-                                                AutoStartPermissionHelper.openAutoStartSettings(context)
-                                                viewModel.setAutoStartConfigured(true)
-                                            },
-                                            shape = RoundedCornerShape(8.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(30.dp)
-                                        ) {
-                                            Text("Enable ↗", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
-
-                                        IconButton(
-                                            onClick = { viewModel.setAutoStartConfigured(true) },
-                                            modifier = Modifier.size(26.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Close,
-                                                contentDescription = "Dismiss",
-                                                tint = Color(0xFFB45309),
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
-                    thickness = 1.dp
-                )
-
-                // Segmented Tab Bar: [ 📩 Messages (N) | 📞 Calls (N) ]
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // Messages Tab
-                        val isMessagesSelected = selectedTab == HostTab.MESSAGES
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isMessagesSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
-                            shadowElevation = if (isMessagesSelected) 2.dp else 0.dp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { viewModel.selectTab(HostTab.MESSAGES) }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 10.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Sms,
-                                    contentDescription = null,
-                                    tint = if (isMessagesSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Messages",
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isMessagesSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isMessagesSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (unreadCount > 0) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primary
-                                    ) {
-                                        Text(
-                                            text = "$unreadCount",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                                        )
-                                    }
-                                } else if (totalMessagesCount > 0) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "($totalMessagesCount)",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Calls Tab
-                        val isCallsSelected = selectedTab == HostTab.CALLS
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isCallsSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
-                            shadowElevation = if (isCallsSelected) 2.dp else 0.dp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { viewModel.selectTab(HostTab.CALLS) }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(vertical = 10.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Phone,
-                                    contentDescription = null,
-                                    tint = if (isCallsSelected) Color(0xFF0284C7) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Calls",
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isCallsSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isCallsSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (unreadCallsCount > 0) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color(0xFFDC2626)
-                                    ) {
-                                        Text(
-                                            text = "$unreadCallsCount",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                                        )
-                                    }
-                                } else if (rawCalls.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "(${rawCalls.size})",
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Search Bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { viewModel.onSearchQueryChanged(it) },
-                    placeholder = {
-                        Text(
-                            text = if (selectedTab == HostTab.MESSAGES) "Search sender or message content..." else "Search number, caller name or call type...",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear search",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(20.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .testTag("host_search_input"),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                    )
-                )
-
-                // Device Filter Chips Row (shown when devices are connected)
-                if (connectedDevices.isNotEmpty()) {
-                    val activeDevices = connectedDevices.filter { it.active }
-                    if (activeDevices.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // "All Devices" Chip
-                            val isAllSelected = selectedDeviceFilter == null
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = if (isAllSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                border = if (isAllSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                                modifier = Modifier.clickable { viewModel.setSelectedDeviceFilter(null) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DoneAll,
-                                        contentDescription = null,
-                                        tint = if (isAllSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "All Devices",
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isAllSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            // Individual Device Chips
-                            activeDevices.forEach { device ->
-                                val isSelected = selectedDeviceFilter == device.clientUid || selectedDeviceFilter == device.clientDeviceName
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                                    modifier = Modifier.clickable {
-                                        if (isSelected) {
-                                            viewModel.setSelectedDeviceFilter(null)
-                                        } else {
-                                            viewModel.setSelectedDeviceFilter(device.clientUid)
-                                        }
-                                    }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PhoneAndroid,
-                                            contentDescription = null,
-                                            tint = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = device.clientDeviceName,
-                                            fontSize = 12.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                    }
-                }
-
-                if (selectedTab == HostTab.MESSAGES) {
-                    // Message List or Empty State
-                    if (pagedMessages.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(76.dp)
-                                        .background(
-                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                                            shape = CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Sms,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(38.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(18.dp))
-
-                                Text(
-                                    text = if (searchQuery.isNotEmpty()) "No matching messages found" else "Waiting for SMS from Client…",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Text(
-                                    text = if (searchQuery.isNotEmpty()) "Try searching for a different sender number or keyword." else "When an SMS is received on your linked Client device, it will automatically show up here in real time.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("host_sms_list"),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(pagedMessages, key = { it.messageId }) { msg ->
-                                val isSelected = selectedMessageIds.contains(msg.messageId)
-                                SmsCardItem(
-                                    message = msg,
-                                    isSelectionMode = isSelectionMode,
-                                    isSelected = isSelected,
-                                    onToggleSelect = { viewModel.toggleSelection(msg.messageId) },
-                                    onLongClick = { viewModel.enterSelectionMode(msg.messageId) },
-                                    onOpenFullscreen = { messageDetailTarget = msg },
-                                    onMarkAsRead = { viewModel.markMessageAsRead(msg.messageId) },
-                                    onDelete = { messageToDeleteSingle = msg.messageId },
-                                    onCopy = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        val otpResult = OtpExtractor.extractOtp(msg.body)
-                                        if (otpResult.isOtp) {
-                                            val clip = ClipData.newPlainText("OTP", otpResult.otp)
-                                            clipboard.setPrimaryClip(clip)
-                                            Toast.makeText(context, "Copied OTP: ${otpResult.otp}", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            val clip = ClipData.newPlainText("SMS Body", msg.body)
-                                            clipboard.setPrimaryClip(clip)
-                                            Toast.makeText(context, "Copied SMS to clipboard", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                )
-                            }
-
-                            // Lazy Loading Footer / Pagination Info
-                            item {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "Showing ${pagedMessages.size} of $totalMessagesCount messages (Cached in Encrypted Local Storage)",
-                                        fontSize = 11.5.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    if (isLoadingOlderMessages) {
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(16.dp),
-                                                strokeWidth = 2.dp,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = "Fetching older messages from cloud...",
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    } else if (hasMoreMessages) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        OutlinedButton(
-                                            onClick = { viewModel.loadMoreMessages() },
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.fillMaxWidth(0.65f)
-                                        ) {
-                                            Text("Load Older Messages", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                            }
-
-                            item {
-                                Spacer(modifier = Modifier.height(72.dp)) // Padding for FAB
-                            }
-                        }
-                    }
-                } else {
-                    // CALLS TAB CONTENT
-                    if (filteredCalls.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(76.dp)
-                                        .background(
-                                            color = Color(0xFFE0F2FE),
-                                            shape = CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Phone,
-                                        contentDescription = null,
-                                        tint = Color(0xFF0284C7),
-                                        modifier = Modifier.size(38.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(18.dp))
-
-                                Text(
-                                    text = if (searchQuery.isNotEmpty()) "No matching calls found" else "Waiting for Calls from Client…",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Text(
-                                    text = if (searchQuery.isNotEmpty()) "Try searching for a different number or caller name." else "When an incoming, missed, or outgoing call occurs on your linked Client device, its details will appear here automatically in real time.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("host_calls_list"),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            // Quick Call Metrics Chips
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(bottom = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    val missedCount = rawCalls.count { it.callType == CallType.MISSED || it.callType == CallType.REJECTED }
-                                    val incomingCount = rawCalls.count { it.callType == CallType.INCOMING || it.callType == CallType.RINGING }
-                                    val outgoingCount = rawCalls.count { it.callType == CallType.OUTGOING }
-
-                                    CallMetricPill(
-                                        label = "Total",
-                                        count = rawCalls.size,
-                                        color = Color(0xFF0284C7),
-                                        bgColor = Color(0xFFE0F2FE)
-                                    )
-                                    CallMetricPill(
-                                        label = "Missed",
-                                        count = missedCount,
-                                        color = Color(0xFFDC2626),
-                                        bgColor = Color(0xFFFEE2E2)
-                                    )
-                                    CallMetricPill(
-                                        label = "Received",
-                                        count = incomingCount,
-                                        color = Color(0xFF16A34A),
-                                        bgColor = Color(0xFFDCFCE7)
-                                    )
-                                    if (outgoingCount > 0) {
-                                        CallMetricPill(
-                                            label = "Outgoing",
-                                            count = outgoingCount,
-                                            color = Color(0xFF7C3AED),
-                                            bgColor = Color(0xFFEDE9FE)
-                                        )
-                                    }
-                                }
-                            }
-
-                            items(pagedCalls, key = { it.callId }) { call ->
-                                val isSelected = selectedCallIds.contains(call.callId)
-                                CallCardItem(
-                                    call = call,
-                                    isSelectionMode = isCallSelectionMode,
-                                    isSelected = isSelected,
-                                    onToggleSelect = { viewModel.toggleCallSelection(call.callId) },
-                                    onLongClick = { viewModel.enterCallSelectionMode(call.callId) },
-                                    onOpenHistory = { callHistoryTarget = call },
-                                    onMarkAsRead = { viewModel.markCallAsRead(call.callId) },
-                                    onDelete = { callToDeleteSingle = call.callId },
-                                    onCallBack = {
-                                        try {
-                                            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${call.phoneNumber.trim()}")).apply {
-                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                            }
-                                            context.startActivity(dialIntent)
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Cannot open dialer: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
                                     },
-                                    onCopyNumber = {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", call.phoneNumber))
-                                        Toast.makeText(context, "Copied: ${call.phoneNumber}", Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            }
-
-                            // Lazy Loading Footer / Pagination Info for Calls
-                            item {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "Showing ${pagedCalls.size} of $totalCallsCount calls (Cached in Encrypted Local Storage)",
-                                        fontSize = 11.5.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    if (isLoadingOlderCalls) {
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(16.dp),
-                                                strokeWidth = 2.dp,
-                                                color = Color(0xFF0284C7)
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = "Fetching older calls from cloud...",
-                                                fontSize = 12.sp,
-                                                color = Color(0xFF0284C7),
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    } else if (hasMoreCalls) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        OutlinedButton(
-                                            onClick = { viewModel.loadMoreCalls() },
-                                            shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.fillMaxWidth(0.65f)
-                                        ) {
-                                            Text("Load Older Calls", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                            }
-
-                            item {
-                                Spacer(modifier = Modifier.height(72.dp)) // Padding for FAB
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SmsCardItem(
-    message: SmsMessage,
-    isSelectionMode: Boolean,
-    isSelected: Boolean,
-    onToggleSelect: () -> Unit,
-    onLongClick: () -> Unit,
-    onOpenFullscreen: () -> Unit = {},
-    onMarkAsRead: () -> Unit,
-    onDelete: () -> Unit,
-    onCopy: () -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    val formattedTime = remember(message.receivedAt) {
-        val now = System.currentTimeMillis()
-        if (now - message.receivedAt < DateUtils.DAY_IN_MILLIS) {
-            DateUtils.getRelativeTimeSpanString(
-                message.receivedAt,
-                now,
-                DateUtils.MINUTE_IN_MILLIS
-            ).toString()
-        } else {
-            SimpleDateFormat("MMM d, yyyy · hh:mm a", Locale.getDefault()).format(Date(message.receivedAt))
-        }
-    }
-
-    val isUnread = !message.read
-
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                isSelected -> Color(0xFFD0BCFF).copy(alpha = 0.6f)
-                isUnread -> Color(0xFFEADDFF)
-                else -> Color(0xFFFFFFFF)
-            }
-        ),
-        border = BorderStroke(
-            width = if (isSelected) 2.dp else 1.dp,
-            color = when {
-                isSelected -> MaterialTheme.colorScheme.primary
-                isUnread -> Color(0xFFD0BCFF)
-                else -> Color(0xFFCAC4D0)
-            }
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isUnread || isSelected) 2.dp else 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .combinedClickable(
-                onClick = {
-                    if (isSelectionMode) {
-                        onToggleSelect()
-                    } else {
-                        expanded = !expanded
-                        if (isUnread) {
-                            onMarkAsRead()
-                        }
-                    }
-                },
-                onLongClick = onLongClick
-            )
-            .animateContentSize()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            if (isSelectionMode) {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onToggleSelect() },
-                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.padding(end = 8.dp)
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                // Header Row: Sender + Relative Time + Unread indicator
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = message.sender,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.2).sp,
-                        color = if (isUnread) Color(0xFF21005D) else Color(0xFF1D1B20)
-                    )
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = formattedTime,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF49454F)
-                        )
-                        if (isUnread) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(10.dp)
-                                    .background(Color(0xFF6750A4), shape = CircleShape)
-                                    .border(1.5.dp, Color.White, CircleShape)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Body text
-                Text(
-                    text = message.body,
-                    fontSize = 14.sp,
-                    fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
-                    color = if (isUnread) Color(0xFF21005D) else Color(0xFF49454F),
-                    maxLines = if (expanded) Int.MAX_VALUE else 3,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 20.sp
-                )
-
-                // Prominent OTP Container if message contains OTP / verification code
-                val itemContext = androidx.compose.ui.platform.LocalContext.current
-                val otpResult = remember(message.body) { OtpExtractor.extractOtp(message.body) }
-                if (otpResult.isOtp) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF7C3AED).copy(alpha = 0.10f),
-                        border = BorderStroke(1.dp, Color(0xFF7C3AED).copy(alpha = 0.35f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "OTP",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF7C3AED)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = otpResult.formattedOtp,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    letterSpacing = 1.2.sp,
-                                    color = Color(0xFF6D28D9)
-                                )
-                            }
-                            FilledTonalButton(
-                                onClick = {
-                                    val clipboard = itemContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("OTP", otpResult.otp)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(itemContext, "Copied OTP: ${otpResult.otp}", Toast.LENGTH_SHORT).show()
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = Color(0xFF7C3AED),
-                                    contentColor = Color.White
-                                ),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy OTP",
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Copy OTP", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-
-                // Prominent Location / Google Maps Container if message contains Google Maps link
-                val hasLocation = remember(message.body) {
-                    message.body.contains("maps.google.com") || message.body.contains("goo.gl/maps") || message.body.contains("📍 Device Location")
-                }
-                if (hasLocation) {
-                    val mapsUrl = remember(message.body) {
-                        val regex = Regex("https?://[\\w./?=&,-]+")
-                        regex.findAll(message.body).map { it.value }.firstOrNull { it.contains("maps") } ?: ""
-                    }
-                    if (mapsUrl.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF0284C7).copy(alpha = 0.10f),
-                            border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Icon(
-                                        imageVector = Icons.Default.LocationOn,
-                                        contentDescription = "Location",
-                                        tint = Color(0xFF0284C7),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "📍 Live GPS Location",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF0369A1)
-                                    )
-                                }
-                                FilledTonalButton(
                                     onClick = {
-                                        try {
-                                            val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl)).apply {
-                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                            }
-                                            itemContext.startActivity(mapIntent)
-                                        } catch (e: Exception) {
-                                            Toast.makeText(itemContext, "Unable to open Maps: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = Color(0xFF0284C7),
-                                        contentColor = Color.White
-                                    ),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("Open in Maps", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Bottom action row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = if (expanded) "Tap to collapse" else "Tap to expand",
-                        fontSize = 11.sp,
-                        color = if (isUnread) Color(0xFF21005D).copy(alpha = 0.7f) else Color(0xFF49454F).copy(alpha = 0.7f)
-                    )
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = onDelete,
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteOutline,
-                                contentDescription = "Delete SMS",
-                                tint = Color(0xFFDC2626).copy(alpha = 0.8f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        IconButton(
-                            onClick = onCopy,
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copy message",
-                                tint = if (isUnread) Color(0xFF21005D) else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CallMetricPill(
-    label: String,
-    count: Int,
-    color: Color,
-    bgColor: Color
-) {
-    Surface(
-        shape = RoundedCornerShape(100.dp),
-        color = bgColor,
-        border = BorderStroke(1.dp, color.copy(alpha = 0.3f))
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = color
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = "$count",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = color
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun CallCardItem(
-    call: CallRecord,
-    isSelectionMode: Boolean = false,
-    isSelected: Boolean = false,
-    onToggleSelect: () -> Unit = {},
-    onLongClick: () -> Unit = {},
-    onOpenHistory: () -> Unit,
-    onMarkAsRead: () -> Unit,
-    onDelete: () -> Unit,
-    onCallBack: () -> Unit,
-    onCopyNumber: () -> Unit
-) {
-    val formattedTime = remember(call.timestamp) {
-        val now = System.currentTimeMillis()
-        if (now - call.timestamp < DateUtils.DAY_IN_MILLIS) {
-            DateUtils.getRelativeTimeSpanString(
-                call.timestamp,
-                now,
-                DateUtils.MINUTE_IN_MILLIS
-            ).toString()
-        } else {
-            SimpleDateFormat("MMM d, yyyy · hh:mm a", Locale.getDefault()).format(Date(call.timestamp))
-        }
-    }
-
-    val isUnread = !call.read
-
-    // Type styling
-    val (typeLabel, typeColor, typeBg, typeIcon) = when (call.callType) {
-        CallType.RINGING -> Quadruple("Ringing Now", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.Phone)
-        CallType.MISSED -> Quadruple("Missed Call", Color(0xFFDC2626), Color(0xFFFEE2E2), Icons.Default.CallMissed)
-        CallType.INCOMING -> Quadruple("Incoming", Color(0xFF16A34A), Color(0xFFDCFCE7), Icons.Default.CallReceived)
-        CallType.OUTGOING -> Quadruple("Outgoing", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.CallMade)
-        CallType.REJECTED -> Quadruple("Declined", Color(0xFFD97706), Color(0xFFFEF3C7), Icons.Default.PhoneDisabled)
-    }
-
-    val isUnknown = call.phoneNumber.isBlank() || call.phoneNumber.equals("Unknown", ignoreCase = true)
-    val hasContactName = !isUnknown && call.contactName.isNotBlank() && !call.contactName.equals(call.phoneNumber, ignoreCase = true)
-    val displayName = when {
-        hasContactName -> call.contactName.trim()
-        isUnknown -> "Unknown Caller"
-        else -> call.phoneNumber.trim()
-    }
-    val displayInitial = when {
-        hasContactName -> call.contactName.trim().first().uppercaseChar().toString()
-        isUnknown -> "?"
-        else -> "#"
-    }
-
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                isSelected -> Color(0xFFD0BCFF).copy(alpha = 0.5f)
-                isUnread -> Color(0xFFEFF6FF)
-                else -> Color.White
-            }
-        ),
-        border = BorderStroke(
-            width = if (isSelected) 2.dp else if (isUnread) 1.5.dp else 1.dp,
-            color = when {
-                isSelected -> MaterialTheme.colorScheme.primary
-                isUnread -> Color(0xFF93C5FD)
-                else -> Color(0xFFE2E8F0)
-            }
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isUnread || isSelected) 2.dp else 0.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .combinedClickable(
-                onClick = {
-                    if (isSelectionMode) {
-                        onToggleSelect()
-                    } else {
-                        if (isUnread) onMarkAsRead()
-                        onOpenHistory()
-                    }
-                },
-                onLongClick = onLongClick
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isSelectionMode) {
-                    Checkbox(
-                        checked = isSelected,
-                        onCheckedChange = { onToggleSelect() },
-                        colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                }
-
-                // Caller Initial Avatar with Type Badge
-                Box(modifier = Modifier.size(46.dp)) {
-                    Surface(
-                        shape = CircleShape,
-                        color = typeBg,
-                        border = BorderStroke(1.dp, typeColor.copy(alpha = 0.4f)),
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = displayInitial,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = typeColor
-                            )
-                        }
-                    }
-
-                    // Mini Call Type Badge in bottom right
-                    Surface(
-                        shape = CircleShape,
-                        color = typeColor,
-                        border = BorderStroke(1.5.dp, Color.White),
-                        modifier = Modifier
-                            .size(18.dp)
-                            .align(Alignment.BottomEnd)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = typeIcon,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(10.dp)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                // Name / Phone / Badges
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f, fill = false)
-                        ) {
-                            if (hasContactName) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = null,
-                                    tint = Color(0xFF2563EB),
-                                    modifier = Modifier.size(16.dp).padding(end = 4.dp)
-                                )
-                            }
-                            Text(
-                                text = displayName,
-                                fontSize = 15.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF0F172A),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = formattedTime,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF64748B)
-                            )
-                            if (isUnread) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(Color(0xFF2563EB), CircleShape)
+                                        showMoreMenu = false
+                                        onOpenDeveloperProfile()
+                                    }
                                 )
                             }
                         }
-                    }
-
-                    if (hasContactName && call.phoneNumber.isNotBlank() && !isUnknown) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = call.phoneNumber,
-                            fontSize = 12.5.sp,
-                            color = Color(0xFF475569),
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                        )
-                    } else if (isUnknown) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "(Number unrecorded)",
-                            fontSize = 12.sp,
-                            color = Color(0xFF94A3B8),
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // Tags: Call Type, Duration, SIM
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = typeBg
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = typeLabel,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = typeColor
-                                )
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFF1F5F9)
-                        ) {
-                            Text(
-                                text = call.formattedDuration(),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF334155),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFFF1F5F9)
-                        ) {
-                            Text(
-                                text = "SIM ${call.simSlot}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF475569),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            HorizontalDivider(
-                color = Color(0xFFE2E8F0).copy(alpha = 0.7f),
-                thickness = 0.8.dp
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Action Row: 1-Tap Call Back, Copy Number, History, Delete
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (!isUnknown) {
-                        Button(
-                            onClick = onCallBack,
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Phone,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Call", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-
-                        OutlinedButton(
-                            onClick = onCopyNumber,
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = null,
-                                tint = Color(0xFF475569),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Copy", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF334155))
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = onOpenHistory,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFF93C5FD)),
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFEFF6FF)),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.History,
-                            contentDescription = null,
-                            tint = Color(0xFF1D4ED8),
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("History", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
-                    }
-                }
-
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete Call",
-                        tint = Color(0xFFDC2626).copy(alpha = 0.8f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CallHistoryDialog(
-    targetCall: CallRecord,
-    allCalls: List<CallRecord>,
-    onDismiss: () -> Unit,
-    onCallBack: (String) -> Unit,
-    onCopyNumber: (String) -> Unit,
-    onDeleteLogs: (List<String>) -> Unit
-) {
-    val targetNumber = targetCall.phoneNumber.trim()
-    val isUnknown = targetNumber.isBlank() || targetNumber.equals("Unknown", ignoreCase = true)
-    val hasContactName = !isUnknown && targetCall.contactName.isNotBlank() && !targetCall.contactName.equals(targetNumber, ignoreCase = true)
-    val displayName = when {
-        hasContactName -> targetCall.contactName.trim()
-        isUnknown -> "Unknown Caller / Unresolved Logs"
-        else -> targetNumber
-    }
-
-    // Filter all calls matching this phone number (matching by last 10 digits to normalize area/country code)
-    val callerLogs = remember(targetNumber, allCalls) {
-        val filtered = if (isUnknown) {
-            allCalls.filter { it.phoneNumber.isBlank() || it.phoneNumber.equals("Unknown", ignoreCase = true) }
-                .sortedByDescending { it.timestamp }
-        } else {
-            val cleanTarget = targetNumber.filter { it.isDigit() }.let { if (it.length >= 10) it.takeLast(10) else it }
-            allCalls.filter { call ->
-                val cleanCandidate = call.phoneNumber.filter { it.isDigit() }.let { if (it.length >= 10) it.takeLast(10) else it }
-                if (cleanTarget.isNotEmpty() && cleanCandidate.isNotEmpty()) {
-                    cleanTarget == cleanCandidate
-                } else {
-                    call.phoneNumber.trim() == targetNumber
-                }
-            }.sortedByDescending { it.timestamp }
-        }
-        filtered.distinctBy { it.callId }
-    }
-
-    val totalCount = callerLogs.size
-    val missedCount = callerLogs.count { it.callType == CallType.MISSED || it.callType == CallType.REJECTED }
-    val incomingCount = callerLogs.count { it.callType == CallType.INCOMING || it.callType == CallType.RINGING }
-    val outgoingCount = callerLogs.count { it.callType == CallType.OUTGOING }
-
-    val displayInitial = when {
-        hasContactName -> targetCall.contactName.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "#"
-        isUnknown -> "?"
-        else -> "#"
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .padding(vertical = 16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-            ) {
-                // Header: Avatar, Name, Number, Close button
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = if (isUnknown) Color(0xFFFEE2E2) else Color(0xFFE0F2FE),
-                        border = BorderStroke(1.5.dp, if (isUnknown) Color(0xFFDC2626).copy(alpha = 0.4f) else Color(0xFF0284C7).copy(alpha = 0.4f)),
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = displayInitial,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isUnknown) Color(0xFFDC2626) else Color(0xFF0284C7)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (hasContactName) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = null,
-                                    tint = Color(0xFF2563EB),
-                                    modifier = Modifier.size(16.dp).padding(end = 4.dp)
-                                )
-                            }
-                            Text(
-                                text = displayName,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        if (hasContactName && targetNumber.isNotBlank() && !isUnknown) {
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = targetNumber,
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                            )
-                        } else if (isUnknown) {
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Number unrecorded (Call Log permission missing on sender)",
-                                fontSize = 11.5.sp,
-                                color = Color(0xFFDC2626),
-                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                            )
-                        }
-                    }
-
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Stats row: Total, Missed, Received, Outgoing
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    CallMetricPill(
-                        label = "Total",
-                        count = totalCount,
-                        color = Color(0xFF0284C7),
-                        bgColor = Color(0xFFE0F2FE)
-                    )
-                    CallMetricPill(
-                        label = "Missed",
-                        count = missedCount,
-                        color = Color(0xFFDC2626),
-                        bgColor = Color(0xFFFEE2E2)
-                    )
-                    CallMetricPill(
-                        label = "Received",
-                        count = incomingCount,
-                        color = Color(0xFF16A34A),
-                        bgColor = Color(0xFFDCFCE7)
-                    )
-                    if (outgoingCount > 0) {
-                        CallMetricPill(
-                            label = "Outgoing",
-                            count = outgoingCount,
-                            color = Color(0xFF7C3AED),
-                            bgColor = Color(0xFFEDE9FE)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = "Call History Logs ($totalCount)",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = ObsidianBg)
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Call items list
-                if (callerLogs.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(120.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No call logs recorded for this number.",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 320.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(callerLogs, key = { index, entry -> "${entry.callId}_$index" }) { _, entry ->
-                            val (typeLabel, typeColor, typeBg, typeIcon) = when (entry.callType) {
-                                CallType.RINGING -> Quadruple("Ringing Now", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.Phone)
-                                CallType.MISSED -> Quadruple("Missed Call", Color(0xFFDC2626), Color(0xFFFEE2E2), Icons.Default.CallMissed)
-                                CallType.INCOMING -> Quadruple("Incoming", Color(0xFF16A34A), Color(0xFFDCFCE7), Icons.Default.CallReceived)
-                                CallType.OUTGOING -> Quadruple("Outgoing", Color(0xFF2563EB), Color(0xFFDBEAFE), Icons.Default.CallMade)
-                                CallType.REJECTED -> Quadruple("Declined", Color(0xFFD97706), Color(0xFFFEF3C7), Icons.Default.PhoneDisabled)
-                            }
-                            val dateStr = SimpleDateFormat("MMM d, yyyy · hh:mm a", Locale.getDefault()).format(Date(entry.timestamp))
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = typeBg,
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = typeIcon,
-                                                contentDescription = null,
-                                                tint = typeColor,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.width(10.dp))
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = typeLabel,
-                                                fontSize = 12.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = typeColor
-                                            )
-                                            Text(
-                                                text = entry.formattedDuration(),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = dateStr,
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                            )
-                                            Text(
-                                                text = "SIM ${entry.simSlot}",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Medium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                            )
-                                        }
-                                        if (entry.clientDeviceName.isNotBlank()) {
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "📱 ${entry.clientDeviceName}",
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Bottom actions: Call Back, Copy, Delete Logs, Close
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (!isUnknown) {
-                            Button(
-                                onClick = {
-                                    onCallBack(targetNumber)
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Phone,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Call Back", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    onCopyNumber(targetNumber)
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.height(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Copy", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-
-                        // Delete Logs button (available for all, especially Unknown calls)
-                        Button(
-                            onClick = {
-                                onDeleteLogs(callerLogs.map { it.callId })
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isUnknown) "Delete All ($totalCount)" else "Delete",
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    }
-
-                    TextButton(onClick = onDismiss) {
-                        Text("Close", fontWeight = FontWeight.SemiBold)
-                    }
-                }
             }
-        }
-    }
-}
-
-private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
-
-@Composable
-private fun HostQrCodeDialog(
-    hostCode: String,
-    hostPhoneNumber: String,
-    onUpdateHostPhoneNumber: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onScanClient: () -> Unit,
-    onCopyCode: () -> Unit
-) {
-    val context = LocalContext.current
-    var editingPhone by remember { mutableStateOf(false) }
-    var phoneInput by remember(hostPhoneNumber) { mutableStateOf(hostPhoneNumber) }
-
-    val qrBitmap = remember(hostCode, hostPhoneNumber) {
-        if (hostCode.isNotBlank()) {
-            QrCodeUtils.generateQrBitmap(QrCodeUtils.encodeCode(hostCode, hostPhoneNumber.ifBlank { null }), 600)
-        } else null
-    }
-
-    val detectedSims = remember(context) {
-        com.example.util.SimUtils.getAvailableSims(context)
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .padding(vertical = 16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.QrCode,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "Host Pairing QR Code",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Scan to link client device",
-                                fontSize = 11.5.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // QR Code Display Card
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
-                    border = BorderStroke(2.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier
-                        .size(230.dp)
-                        .padding(4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (qrBitmap != null) {
-                            Image(
-                                bitmap = qrBitmap.asImageBitmap(),
-                                contentDescription = "Host Pairing QR Code",
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(8.dp)
-                            )
-                        } else {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(36.dp),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Pairing Code Banner
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(
-                                text = "PAIRING CODE",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                letterSpacing = 1.sp
-                            )
-                            Text(
-                                text = hostCode.ifEmpty { "Generating..." },
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                letterSpacing = 2.sp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-
-                        FilledTonalButton(
-                            onClick = onCopyCode,
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Copy", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                // Host Mobile Number & Detected SIM Section (For Offline Cellular Fallback)
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Phone,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Host Mobile (For Offline SMS)",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            IconButton(
-                                onClick = { editingPhone = !editingPhone },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (editingPhone) Icons.Default.Check else Icons.Default.Edit,
-                                    contentDescription = "Edit phone",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-
-                        if (editingPhone) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = phoneInput,
-                                onValueChange = { phoneInput = it },
-                                label = { Text("Host Phone Number (+91...)") },
-                                placeholder = { Text("+91 9876543210") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                TextButton(onClick = {
-                                    phoneInput = hostPhoneNumber
-                                    editingPhone = false
-                                }) {
-                                    Text("Cancel", fontSize = 12.sp)
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Button(
-                                    onClick = {
-                                        onUpdateHostPhoneNumber(phoneInput.trim())
-                                        editingPhone = false
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                ) {
-                                    Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        } else {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (hostPhoneNumber.isNotBlank()) hostPhoneNumber else "Not Set (Tap edit to add)",
-                                fontSize = 13.5.sp,
-                                fontWeight = if (hostPhoneNumber.isNotBlank()) FontWeight.Bold else FontWeight.Normal,
-                                color = if (hostPhoneNumber.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                            )
-                        }
-
-                        // Detected SIMs quick picker on Host
-                        if (detectedSims.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Detected SIM(s) on this device:",
-                                fontSize = 10.5.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                detectedSims.forEach { sim ->
-                                    val simPhone = sim.phoneNumber
-                                    val label = "SIM ${sim.slotIndex + 1}: ${sim.displayName}" + (if (!simPhone.isNullOrBlank()) " ($simPhone)" else "")
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                        modifier = Modifier.clickable {
-                                            if (!simPhone.isNullOrBlank()) {
-                                                phoneInput = simPhone
-                                                onUpdateHostPhoneNumber(simPhone)
-                                            } else {
-                                                editingPhone = true
-                                            }
-                                        }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.SimCard,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = label,
-                                                fontSize = 10.5.sp,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text(
-                    text = "On your other phone in Sender (Client) Mode, tap 'Scan Host QR' to scan this code and connect instantly!",
-                    fontSize = 12.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 17.sp
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = ObsidianSurface,
+                tonalElevation = 8.dp,
+                modifier = Modifier.border(
+                    BorderStroke(1.dp, ObsidianBorder.copy(alpha = 0.6f)),
+                    RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Action buttons: Scan Client's QR Camera & Done
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onScanClient,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.QrCodeScanner,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Or Scan Client's QR", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                    ) {
-                        Text("Done", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MessageFullScreenDialog(
-    message: SmsMessage,
-    onDismiss: () -> Unit,
-    onCopy: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val context = LocalContext.current
-    val formattedTime = remember(message.receivedAt) {
-        SimpleDateFormat("EEE, MMM d, yyyy · hh:mm:ss a", Locale.getDefault()).format(Date(message.receivedAt))
-    }
-    val otpResult = remember(message.body) { OtpExtractor.extractOtp(message.body) }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.85f)
-                .padding(vertical = 16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp)
             ) {
-                // Top Header Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(42.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
+                HostBottomNavTab.entries.forEach { tab ->
+                    val selected = currentBottomTab == tab
+                    val badgeCount = when (tab) {
+                        HostBottomNavTab.INBOX -> unreadCount
+                        HostBottomNavTab.CALLS -> unreadCallsCount
+                        HostBottomNavTab.DEVICES -> connectedDevices.count { it.active }
+                        HostBottomNavTab.HUB -> 0
+                    }
+
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = {
+                            currentBottomTab = tab
+                            if (tab == HostBottomNavTab.INBOX) viewModel.selectTab(HostTab.MESSAGES)
+                            if (tab == HostBottomNavTab.CALLS) viewModel.selectTab(HostTab.CALLS)
+                        },
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    if (badgeCount > 0) {
+                                        Badge(
+                                            containerColor = if (tab == HostBottomNavTab.DEVICES) EmeraldPrimary else CoralSecondary,
+                                            contentColor = Color.White
+                                        ) {
+                                            Text(
+                                                text = if (badgeCount > 99) "99+" else badgeCount.toString(),
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                        }
+                                    }
+                                }
+                            ) {
                                 Icon(
-                                    imageVector = Icons.Default.Sms,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    imageVector = tab.icon,
+                                    contentDescription = tab.label,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        },
+                        label = {
                             Text(
-                                text = message.sender,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = formattedTime,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // Client Device Tag if present
-                if (message.clientDeviceName.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PhoneAndroid,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Received via: ${message.clientDeviceName}",
+                                text = tab.label,
                                 fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium
+                            )
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = ObsidianBg,
+                            selectedTextColor = EmeraldBright,
+                            indicatorColor = EmeraldPrimary,
+                            unselectedIconColor = TextSecondary,
+                            unselectedTextColor = TextSecondary
+                        )
+                    )
+                }
+            }
+        }
+    ) { padding ->
+        AnimatedContent(
+            targetState = currentBottomTab,
+            label = "host_tab_transition",
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) { tab ->
+            when (tab) {
+                HostBottomNavTab.INBOX -> HostInboxTab(
+                    context = context,
+                    messages = pagedMessages,
+                    totalMessagesCount = totalMessagesCount,
+                    unreadCount = unreadCount,
+                    hasMoreMessages = hasMoreMessages,
+                    isLoadingOlderMessages = isLoadingOlderMessages,
+                    isRefreshing = isRefreshing,
+                    searchQuery = searchQuery,
+                    inboxFilter = inboxFilter,
+                    connectedDevices = connectedDevices,
+                    selectedDeviceFilter = selectedDeviceFilter,
+                    isSelectionMode = isSelectionMode,
+                    selectedMessageIds = selectedMessageIds,
+                    permissionSteps = hostPermissionSteps,
+                    onOpenPermissionSheet = { showPermissionSheet = true },
+                    onOpenQrSheet = { showHostQrSheet = true },
+                    onSearchChange = { viewModel.onSearchQueryChanged(it) },
+                    onFilterChange = { inboxFilter = it },
+                    onSelectDeviceFilter = { viewModel.setSelectedDeviceFilter(it) },
+                    onRefresh = { viewModel.refresh() },
+                    onLoadMore = { viewModel.loadMoreMessages() },
+                    onMarkAllRead = { viewModel.markAllAsRead() },
+                    onMessageClick = { msg ->
+                        if (isSelectionMode) {
+                            viewModel.toggleSelection(msg.messageId)
+                        } else {
+                            if (!msg.read) viewModel.markMessageAsRead(msg.messageId)
+                            messageDetailTarget = msg
+                        }
+                    },
+                    onMessageLongClick = { msg ->
+                        viewModel.enterSelectionMode(msg.messageId)
+                    }
+                )
+
+                HostBottomNavTab.CALLS -> HostCallsTab(
+                    context = context,
+                    calls = pagedCalls,
+                    totalCallsCount = totalCallsCount,
+                    unreadCallsCount = unreadCallsCount,
+                    hasMoreCalls = hasMoreCalls,
+                    isLoadingOlderCalls = isLoadingOlderCalls,
+                    isRefreshing = isRefreshing,
+                    searchQuery = searchQuery,
+                    isCallSelectionMode = isCallSelectionMode,
+                    selectedCallIds = selectedCallIds,
+                    onSearchChange = { viewModel.onSearchQueryChanged(it) },
+                    onRefresh = { viewModel.refresh() },
+                    onLoadMore = { viewModel.loadMoreCalls() },
+                    onMarkAllCallsRead = { viewModel.markAllCallsAsRead() },
+                    onCallClick = { call ->
+                        if (isCallSelectionMode) {
+                            viewModel.toggleCallSelection(call.callId)
+                        } else {
+                            if (!call.read) viewModel.markCallAsRead(call.callId)
+                            callHistoryTarget = call
+                        }
+                    },
+                    onCallLongClick = { call ->
+                        viewModel.enterCallSelectionMode(call.callId)
+                    }
+                )
+
+                HostBottomNavTab.DEVICES -> HostDevicesTab(
+                    context = context,
+                    hostCode = hostCode,
+                    connectedDevices = connectedDevices,
+                    onOpenQrSheet = { showHostQrSheet = true },
+                    onScanClientQr = {
+                        if (hasCameraPermission) {
+                            showQrScanner = true
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
+                    onRequestClientLocation = { clientUid ->
+                        viewModel.requestClientLocation(clientUid) { sent ->
+                            Toast.makeText(
+                                context,
+                                if (sent) "Live GPS request sent to client! Watch Inbox for map link." else "Failed to send GPS request.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    },
+                    onDisconnectClient = { clientUid ->
+                        viewModel.disconnectClient(clientUid)
+                        Toast.makeText(context, "Client device unlinked", Toast.LENGTH_SHORT).show()
+                    },
+                    onOpenWalkieTalkie = onOpenWalkieTalkie
+                )
+
+                HostBottomNavTab.HUB -> HostControlHubTab(
+                    context = context,
+                    hostCode = hostCode,
+                    hostPhoneNumber = hostPhoneNumber,
+                    isFloatingOtpEnabled = isFloatingOtpEnabled,
+                    hasOverlayPermission = hasOverlayPermission,
+                    isAutoStartConfigured = isAutoStartConfigured,
+                    permissionSteps = hostPermissionSteps,
+                    onUpdateHostPhoneNumber = {
+                        viewModel.updateHostPhoneNumber(it)
+                        Toast.makeText(context, "Host fallback number saved!", Toast.LENGTH_SHORT).show()
+                    },
+                    onToggleFloatingOtp = { enabled ->
+                        if (enabled && !hasOverlayPermission) {
+                            FloatingOtpManager.openOverlaySettings(context)
+                        } else {
+                            viewModel.setFloatingOtpEnabled(enabled)
+                        }
+                    },
+                    onTestFloatingOtp = {
+                        if (!FloatingOtpManager.canDrawOverlays(context)) {
+                            FloatingOtpManager.openOverlaySettings(context)
+                        } else {
+                            FloatingOtpManager.showFloatingOtp(
+                                context = context,
+                                sender = "HDFC Bank",
+                                otp = "482910",
+                                formattedOtp = "482 910",
+                                timeString = "Live Preview · Now"
                             )
                         }
-                    }
-                }
+                    },
+                    onConfigureAutoStart = {
+                        AutoStartPermissionHelper.openAutoStartSettings(context)
+                        viewModel.setAutoStartConfigured(true)
+                    },
+                    onOpenPermissionSheet = { showPermissionSheet = true }
+                )
+            }
+        }
+    }
+}
 
-                // Prominent OTP Banner if detected
-                if (otpResult.isOtp) {
-                    Spacer(modifier = Modifier.height(12.dp))
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 1: HOST INBOX (OTP Spotlight, Filter Chips, PullToRefresh Message Feed)
+// ══════════════════════════════════════════════════════════════════════════════
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun HostInboxTab(
+    context: Context,
+    messages: List<SmsMessage>,
+    totalMessagesCount: Int,
+    unreadCount: Int,
+    hasMoreMessages: Boolean,
+    isLoadingOlderMessages: Boolean,
+    isRefreshing: Boolean,
+    searchQuery: String,
+    inboxFilter: InboxFilterMode,
+    connectedDevices: List<ConnectedDevice>,
+    selectedDeviceFilter: String?,
+    isSelectionMode: Boolean,
+    selectedMessageIds: Set<String>,
+    permissionSteps: List<PermissionStepItem>,
+    onOpenPermissionSheet: () -> Unit,
+    onOpenQrSheet: () -> Unit,
+    onSearchChange: (String) -> Unit,
+    onFilterChange: (InboxFilterMode) -> Unit,
+    onSelectDeviceFilter: (String?) -> Unit,
+    onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
+    onMarkAllRead: () -> Unit,
+    onMessageClick: (SmsMessage) -> Unit,
+    onMessageLongClick: (SmsMessage) -> Unit
+) {
+    val pullState = rememberPullToRefreshState()
+
+    val displayedMessages = remember(messages, inboxFilter) {
+        when (inboxFilter) {
+            InboxFilterMode.ALL -> messages
+            InboxFilterMode.UNREAD -> messages.filter { !it.read }
+            InboxFilterMode.OTP_ONLY -> messages.filter { OtpExtractor.extractOtp(it.body).isOtp }
+        }
+    }
+
+    // Latest OTP Spotlight detection
+    val latestOtpPair = remember(messages) {
+        messages.firstNotNullOfOrNull { msg ->
+            val res = OtpExtractor.extractOtp(msg.body)
+            if (res.isOtp) msg to res else null
+        }
+    }
+
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        state = pullState,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Show permission banner if any required Host permission is missing
+            if (permissionSteps.any { it.isRequired && !it.isGranted }) {
+                item {
+                    PermissionStatusBanner(
+                        steps = permissionSteps,
+                        onOpenSheet = onOpenPermissionSheet
+                    )
+                }
+            }
+
+            // Smart OTP Spotlight Hero Card
+            if (latestOtpPair != null && searchQuery.isBlank()) {
+                val (otpMsg, otpRes) = latestOtpPair
+                item(key = "otp_spotlight_${otpMsg.messageId}") {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFF7C3AED).copy(alpha = 0.12f),
-                        border = BorderStroke(1.5.dp, Color(0xFF7C3AED).copy(alpha = 0.45f)),
+                        shape = RoundedCornerShape(22.dp),
+                        color = ObsidianCard,
+                        border = BorderStroke(
+                            1.5.dp,
+                            Brush.linearGradient(listOf(EmeraldPrimary, CyanTertiary))
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            EmeraldSurface.copy(alpha = 0.65f),
+                                            CyanSurface.copy(alpha = 0.35f)
+                                        )
+                                    )
+                                )
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Bolt,
+                                        contentDescription = null,
+                                        tint = EmeraldBright,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "LATEST OTP • ${otpMsg.sender}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = EmeraldBright,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "VERIFICATION OTP",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF7C3AED),
-                                    letterSpacing = 1.sp
-                                )
-                                Text(
-                                    text = otpResult.formattedOtp,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 2.sp,
-                                    color = Color(0xFF5B21B6)
+                                    text = otpRes.formattedOtp.ifBlank { otpRes.otp },
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = TextPrimary,
+                                    letterSpacing = 2.sp
                                 )
                             }
 
                             Button(
                                 onClick = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("OTP", otpResult.otp))
-                                    Toast.makeText(context, "Copied OTP: ${otpResult.otp}", Toast.LENGTH_SHORT).show()
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("OTP", otpRes.otp))
+                                    Toast.makeText(context, "Copied OTP: ${otpRes.otp}", Toast.LENGTH_SHORT).show()
+                                    if (!otpMsg.read) onMessageClick(otpMsg)
                                 },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = EmeraldPrimary,
+                                    contentColor = ObsidianBg
+                                ),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(14.dp)
-                                )
+                                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Copy OTP", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Copy OTP", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
                             }
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Full Message Content Box with Border
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    Column(
+            // Search & Filter Bar
+            item(key = "inbox_search_and_filters") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchChange,
+                        placeholder = {
+                            Text("Search sender, OTP, or message text...", fontSize = 13.5.sp, color = TextMuted)
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = EmeraldBright)
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchChange("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear", tint = TextSecondary)
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = ObsidianCard,
+                            unfocusedContainerColor = ObsidianCard,
+                            focusedBorderColor = EmeraldPrimary,
+                            unfocusedBorderColor = ObsidianBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState())
+                            .fillMaxWidth()
+                            .testTag("search_messages_input")
+                    )
+
+                    // Filter Pills Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "FULL MESSAGE CONTENT",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        SelectionContainer {
-                            Text(
-                                text = message.body,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 24.sp
-                            )
+                        InboxFilterMode.entries.forEach { mode ->
+                            val selected = inboxFilter == mode
+                            Surface(
+                                onClick = { onFilterChange(mode) },
+                                shape = RoundedCornerShape(100.dp),
+                                color = if (selected) EmeraldPrimary else ObsidianCard,
+                                border = BorderStroke(1.dp, if (selected) EmeraldPrimary else ObsidianBorder)
+                            ) {
+                                Text(
+                                    text = mode.label,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (selected) ObsidianBg else TextSecondary,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                )
+                            }
+                        }
+
+                        // Multi-device filter chips if clients exist
+                        connectedDevices.forEach { device ->
+                            val selected = selectedDeviceFilter == device.clientUid
+                            Surface(
+                                onClick = {
+                                    onSelectDeviceFilter(if (selected) null else device.clientUid)
+                                },
+                                shape = RoundedCornerShape(100.dp),
+                                color = if (selected) CoralSecondary else ObsidianCard,
+                                border = BorderStroke(1.dp, if (selected) CoralSecondary else ObsidianBorder)
+                            ) {
+                                Text(
+                                    text = device.clientDeviceName,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) Color.White else TextSecondary,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                )
+                            }
+                        }
+
+                        if (unreadCount > 0) {
+                            Surface(
+                                onClick = onMarkAllRead,
+                                shape = RoundedCornerShape(100.dp),
+                                color = ObsidianElevated,
+                                border = BorderStroke(1.dp, ObsidianBorder)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                ) {
+                                    Icon(Icons.Default.DoneAll, null, tint = EmeraldBright, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Mark Read", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = EmeraldBright)
+                                }
+                            }
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Bottom Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = onCopy,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                        modifier = Modifier.height(42.dp)
+            if (displayedMessages.isEmpty()) {
+                item(key = "empty_inbox") {
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = ObsidianCard,
+                        border = BorderStroke(1.dp, ObsidianBorder),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Copy Full SMS", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = onDelete,
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Color(0xFFDC2626).copy(alpha = 0.5f)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                            modifier = Modifier.height(42.dp)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteOutline,
-                                contentDescription = null,
-                                modifier = Modifier.size(15.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .background(EmeraldSurface, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Sms, null, tint = EmeraldBright, modifier = Modifier.size(30.dp))
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = if (searchQuery.isNotBlank()) "No Matching Messages" else "Ready for Incoming SMS",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimary
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Delete", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Link your Client phone using your Host QR code to stream SMS and OTPs here in real time.",
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = onOpenQrSheet,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg)
+                            ) {
+                                Icon(Icons.Default.QrCode, null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Show My Host QR Code", fontWeight = FontWeight.ExtraBold)
+                            }
                         }
+                    }
+                }
+            } else {
+                items(displayedMessages, key = { it.messageId }) { msg ->
+                    HostSmsCard(
+                        context = context,
+                        message = msg,
+                        isSelected = selectedMessageIds.contains(msg.messageId),
+                        isSelectionMode = isSelectionMode,
+                        onClick = { onMessageClick(msg) },
+                        onLongClick = { onMessageLongClick(msg) }
+                    )
+                }
 
-                        TextButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.height(42.dp)
+                if (hasMoreMessages) {
+                    item(key = "load_more_messages") {
+                        OutlinedButton(
+                            onClick = onLoadMore,
+                            enabled = !isLoadingOlderMessages,
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, ObsidianBorder),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
                         ) {
-                            Text("Close", fontWeight = FontWeight.Bold)
+                            if (isLoadingOlderMessages) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = EmeraldBright)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Loading older messages...", color = TextSecondary)
+                            } else {
+                                Text(
+                                    text = "Load Older Messages ($totalMessagesCount loaded)",
+                                    color = EmeraldBright,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
@@ -4027,5 +1390,1220 @@ private fun MessageFullScreenDialog(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HostSmsCard(
+    context: Context,
+    message: SmsMessage,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val otpResult = remember(message.body) { OtpExtractor.extractOtp(message.body) }
+    val formattedTime = remember(message.receivedAt) {
+        SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(message.receivedAt))
+    }
+    val initial = remember(message.sender) {
+        message.sender.trim().firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "S"
+    }
 
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = when {
+            isSelected -> EmeraldSurface
+            !message.read -> ObsidianElevated
+            else -> ObsidianCard
+        },
+        border = BorderStroke(
+            width = if (!message.read || isSelected) 1.5.dp else 1.dp,
+            color = when {
+                isSelected -> EmeraldPrimary
+                !message.read -> EmeraldPrimary.copy(alpha = 0.55f)
+                otpResult.isOtp -> CyanTertiary.copy(alpha = 0.35f)
+                else -> ObsidianBorder
+            }
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    ) {
+        Column(modifier = Modifier.padding(15.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isSelectionMode) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onClick() },
+                            colors = CheckboxDefaults.colors(checkedColor = EmeraldPrimary, checkmarkColor = ObsidianBg)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    if (!message.read) EmeraldPrimary.copy(alpha = 0.22f) else ObsidianSurface,
+                                    CircleShape
+                                )
+                                .border(
+                                    1.dp,
+                                    if (!message.read) EmeraldPrimary.copy(alpha = 0.5f) else ObsidianBorder,
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = initial,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (!message.read) EmeraldBright else TextSecondary
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                    }
 
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = message.sender,
+                                fontSize = 15.sp,
+                                fontWeight = if (!message.read) FontWeight.ExtraBold else FontWeight.Bold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (!message.read) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(EmeraldPrimary, CircleShape)
+                                )
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = formattedTime,
+                                fontSize = 11.sp,
+                                color = TextMuted
+                            )
+                            if (message.clientDeviceName.isNotBlank()) {
+                                Text(
+                                    text = " • ${message.clientDeviceName}",
+                                    fontSize = 11.sp,
+                                    color = EmeraldBright.copy(alpha = 0.85f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 1-Tap Copy OTP Chip if OTP detected
+                if (otpResult.isOtp) {
+                    Surface(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("OTP", otpResult.otp))
+                            Toast.makeText(context, "Copied OTP: ${otpResult.otp}", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = CyanSurface,
+                        border = BorderStroke(1.dp, CyanTertiary.copy(alpha = 0.55f))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, null, tint = CyanTertiary, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = otpResult.otp,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
+                                color = CyanTertiary
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = message.body,
+                fontSize = 13.5.sp,
+                color = if (!message.read) TextPrimary else TextSecondary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 19.sp
+            )
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 2: HOST CALLS (Live Call Feed, Dialer Callback, Copy Number)
+// ══════════════════════════════════════════════════════════════════════════════
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun HostCallsTab(
+    context: Context,
+    calls: List<CallRecord>,
+    totalCallsCount: Int,
+    unreadCallsCount: Int,
+    hasMoreCalls: Boolean,
+    isLoadingOlderCalls: Boolean,
+    isRefreshing: Boolean,
+    searchQuery: String,
+    isCallSelectionMode: Boolean,
+    selectedCallIds: Set<String>,
+    onSearchChange: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
+    onMarkAllCallsRead: () -> Unit,
+    onCallClick: (CallRecord) -> Unit,
+    onCallLongClick: (CallRecord) -> Unit
+) {
+    val pullState = rememberPullToRefreshState()
+
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        state = pullState,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item(key = "calls_header") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchChange,
+                        placeholder = { Text("Search caller name or number...", fontSize = 13.5.sp, color = TextMuted) },
+                        leadingIcon = { Icon(Icons.Default.Search, null, tint = CyanTertiary) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchChange("") }) {
+                                    Icon(Icons.Default.Clear, null, tint = TextSecondary)
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = ObsidianCard,
+                            unfocusedContainerColor = ObsidianCard,
+                            focusedBorderColor = CyanTertiary,
+                            unfocusedBorderColor = ObsidianBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (unreadCallsCount > 0) {
+                        IconButton(
+                            onClick = onMarkAllCallsRead,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(ObsidianCard, RoundedCornerShape(14.dp))
+                                .border(1.dp, ObsidianBorder, RoundedCornerShape(14.dp))
+                        ) {
+                            Icon(Icons.Default.DoneAll, contentDescription = "Mark All Calls Read", tint = CyanTertiary)
+                        }
+                    }
+                }
+            }
+
+            if (calls.isEmpty()) {
+                item(key = "empty_calls") {
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = ObsidianCard,
+                        border = BorderStroke(1.dp, ObsidianBorder),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .background(CyanSurface, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Call, null, tint = CyanTertiary, modifier = Modifier.size(30.dp))
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "No Call Events Yet",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Incoming, missed, and answered calls on your Client phone will stream here automatically.",
+                                fontSize = 13.sp,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(calls, key = { it.callId }) { call ->
+                    HostCallCard(
+                        context = context,
+                        call = call,
+                        isSelected = selectedCallIds.contains(call.callId),
+                        isSelectionMode = isCallSelectionMode,
+                        onClick = { onCallClick(call) },
+                        onLongClick = { onCallLongClick(call) }
+                    )
+                }
+
+                if (hasMoreCalls) {
+                    item(key = "load_more_calls") {
+                        OutlinedButton(
+                            onClick = onLoadMore,
+                            enabled = !isLoadingOlderCalls,
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, ObsidianBorder),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = if (isLoadingOlderCalls) "Loading older calls..." else "Load Older Calls ($totalCallsCount loaded)",
+                                color = CyanTertiary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HostCallCard(
+    context: Context,
+    call: CallRecord,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val (callIcon, callColor, callBg) = when (call.callType) {
+        CallType.RINGING -> Triple(Icons.Default.Call, CyanTertiary, CyanSurface)
+        CallType.MISSED -> Triple(Icons.Default.CallMissed, CrimsonError, CrimsonSurface)
+        CallType.REJECTED -> Triple(Icons.Default.PhoneDisabled, CoralBright, CoralSurface)
+        CallType.INCOMING -> Triple(Icons.Default.CallReceived, EmeraldBright, EmeraldSurface)
+        CallType.OUTGOING -> Triple(Icons.Default.CallMade, AmberWarning, AmberSurface)
+    }
+
+    val formattedTime = remember(call.timestamp) {
+        SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(call.timestamp))
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = if (isSelected) CyanSurface else ObsidianCard,
+        border = BorderStroke(
+            width = if (!call.read || isSelected) 1.5.dp else 1.dp,
+            color = if (isSelected || !call.read) callColor.copy(alpha = 0.6f) else ObsidianBorder
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                if (isSelectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { onClick() },
+                        colors = CheckboxDefaults.colors(checkedColor = CyanTertiary, checkmarkColor = ObsidianBg)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(callBg, RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(callIcon, contentDescription = null, tint = callColor, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+
+                Column {
+                    Text(
+                        text = call.getDisplayName(),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (call.contactName.isNotBlank() && !call.contactName.equals(call.phoneNumber, ignoreCase = true)) {
+                        Text(
+                            text = call.phoneNumber,
+                            fontSize = 12.sp,
+                            color = TextSecondary
+                        )
+                    }
+                    Text(
+                        text = "${call.callType.displayName} • ${call.formattedDuration()} • $formattedTime",
+                        fontSize = 11.5.sp,
+                        color = callColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = {
+                    try {
+                        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${call.phoneNumber.trim()}")).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(dialIntent)
+                    } catch (_: Exception) {}
+                },
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(EmeraldSurface, CircleShape)
+            ) {
+                Icon(Icons.Default.Phone, contentDescription = "Call Back", tint = EmeraldBright, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 3: HOST DEVICES & RADAR (Pairing Card, Connected Clients, Live GPS Request)
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+private fun HostDevicesTab(
+    context: Context,
+    hostCode: String,
+    connectedDevices: List<ConnectedDevice>,
+    onOpenQrSheet: () -> Unit,
+    onScanClientQr: () -> Unit,
+    onRequestClientLocation: (String) -> Unit,
+    onDisconnectClient: (String) -> Unit,
+    onOpenWalkieTalkie: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // 1. Host Pairing Hero Card
+        Card(
+            shape = RoundedCornerShape(26.dp),
+            colors = CardDefaults.cardColors(containerColor = ObsidianCard),
+            border = BorderStroke(
+                1.5.dp,
+                Brush.linearGradient(listOf(EmeraldPrimary, CyanTertiary))
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(EmeraldSurface.copy(alpha = 0.55f), ObsidianCard)
+                        )
+                    )
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "YOUR PERMANENT HOST CODE",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = EmeraldBright,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = hostCode.ifBlank { "LOADING" },
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = FontFamily.Monospace,
+                    color = TextPrimary,
+                    letterSpacing = 4.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Scan this Host QR from your Client phone or enter the code above to link instantly.",
+                    fontSize = 12.5.sp,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = onOpenQrSheet,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.QrCode, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Show QR Code", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = onScanClientQr,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, ObsidianBorder),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.QrCodeScanner, null, tint = CyanTertiary, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Scan Client QR", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                    }
+                }
+            }
+        }
+
+        // 2. Connected Client Nodes Header
+        Text(
+            text = "Linked Client Phones (${connectedDevices.count { it.active }})",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = TextPrimary
+        )
+
+        if (connectedDevices.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = ObsidianCard,
+                border = BorderStroke(1.dp, ObsidianBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.Sensors, null, tint = TextMuted, modifier = Modifier.size(36.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("Waiting for Client Connection", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Open SMS Bridge on your secondary phone, select Client mode, and scan your Host QR code.",
+                        fontSize = 12.5.sp,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            connectedDevices.forEach { device ->
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = ObsidianCard,
+                    border = BorderStroke(
+                        1.dp,
+                        if (device.active) EmeraldPrimary.copy(alpha = 0.45f) else ObsidianBorder
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .background(EmeraldSurface, RoundedCornerShape(14.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.PhoneAndroid, null, tint = EmeraldBright, modifier = Modifier.size(22.dp))
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = device.clientDeviceName,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = TextPrimary
+                                    )
+                                    val batStr = device.batteryPercentage?.let { " • Battery $it%" } ?: ""
+                                    Text(
+                                        text = "Last seen: ${device.lastSeenLabel()}$batStr",
+                                        fontSize = 12.sp,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = if (device.active) EmeraldSurface else CrimsonSurface
+                            ) {
+                                Text(
+                                    text = if (device.active) "ONLINE" else "OFFLINE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (device.active) EmeraldBright else CrimsonError,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { onRequestClientLocation(device.clientUid) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Locate GPS", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+
+                            if (!device.mapsUrl.isNullOrBlank()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        try {
+                                            val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(device.mapsUrl)).apply {
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                            context.startActivity(mapIntent)
+                                        } catch (_: Exception) {}
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, CyanTertiary.copy(alpha = 0.5f)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Open Map ↗", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = CyanTertiary)
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { onDisconnectClient(device.clientUid) },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(CrimsonSurface, RoundedCornerShape(12.dp))
+                            ) {
+                                Icon(Icons.Default.DeleteOutline, contentDescription = "Unlink Device", tint = CrimsonError, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB 4: HOST CONTROL HUB (Floating OTP Popup, Fallback Number, Permissions)
+// ══════════════════════════════════════════════════════════════════════════════
+@Composable
+private fun HostControlHubTab(
+    context: Context,
+    hostCode: String,
+    hostPhoneNumber: String,
+    isFloatingOtpEnabled: Boolean,
+    hasOverlayPermission: Boolean,
+    isAutoStartConfigured: Boolean,
+    permissionSteps: List<PermissionStepItem>,
+    onUpdateHostPhoneNumber: (String) -> Unit,
+    onToggleFloatingOtp: (Boolean) -> Unit,
+    onTestFloatingOtp: () -> Unit,
+    onConfigureAutoStart: () -> Unit,
+    onOpenPermissionSheet: () -> Unit
+) {
+    var phoneDraft by remember(hostPhoneNumber) { mutableStateOf(hostPhoneNumber) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        PermissionStatusBanner(
+            steps = permissionSteps,
+            onOpenSheet = onOpenPermissionSheet
+        )
+
+        // 1. Truecaller-Style Floating OTP Overlay Card
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = ObsidianCard,
+            border = BorderStroke(1.dp, ObsidianBorder),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .background(EmeraldSurface, RoundedCornerShape(13.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.FlipToFront, null, tint = EmeraldBright, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Floating OTP Popup Overlay",
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Pops up OTP card over any app for instant 1-tap copy",
+                                fontSize = 12.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = isFloatingOtpEnabled && hasOverlayPermission,
+                        onCheckedChange = onToggleFloatingOtp,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ObsidianBg,
+                            checkedTrackColor = EmeraldPrimary
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = onTestFloatingOtp,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ObsidianElevated, contentColor = EmeraldBright),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Bolt, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Preview Floating OTP Popup", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+        }
+
+        // 2. Host Mobile Number for Offline Cellular Fallback
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = ObsidianCard,
+            border = BorderStroke(1.dp, ObsidianBorder),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = "Host Mobile Number (Offline Fallback)",
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Included in your Host QR code so linked Clients automatically text this number when offline.",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = phoneDraft,
+                        onValueChange = { phoneDraft = it },
+                        placeholder = { Text("+91 9876543210", color = TextMuted) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = EmeraldPrimary,
+                            unfocusedBorderColor = ObsidianBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = { onUpdateHostPhoneNumber(phoneDraft.trim()) },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 15.dp)
+                    ) {
+                        Text("Save", fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            }
+        }
+
+        // 3. OEM Background Survival Shield
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = ObsidianCard,
+            border = BorderStroke(1.dp, ObsidianBorder),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "OEM Background Auto-Start",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "${AutoStartPermissionHelper.getDeviceBrandName()} background keep-alive settings",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+                OutlinedButton(
+                    onClick = onConfigureAutoStart,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, ObsidianBorder)
+                ) {
+                    Text(
+                        text = if (isAutoStartConfigured) "Configured ✓" else "Configure",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isAutoStartConfigured) EmeraldBright else CoralBright
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SLIDE-UP MODAL BOTTOM SHEETS FOR HOST
+// ══════════════════════════════════════════════════════════════════════════════
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HostQrModalSheet(
+    hostCode: String,
+    hostPhoneNumber: String,
+    onUpdateHostPhoneNumber: (String) -> Unit,
+    onCopyCode: () -> Unit,
+    onScanClient: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val qrBitmap = remember(hostCode, hostPhoneNumber) {
+        val codeToEncode = hostCode.ifBlank { "SMSBRIDGE" }
+        QrCodeUtils.generateQrBitmap(
+            content = QrCodeUtils.encodeCode(codeToEncode, hostPhoneNumber),
+            size = 640
+        ).asImageBitmap()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = ObsidianSurface,
+        contentColor = TextPrimary,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Pair Client Phone",
+                fontSize = 21.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Scan this QR code from the Client phone for instant 1-tap linking.",
+                fontSize = 13.sp,
+                color = TextSecondary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = Color.White,
+                border = BorderStroke(3.dp, EmeraldPrimary),
+                modifier = Modifier
+                    .sizeIn(maxWidth = 220.dp, maxHeight = 220.dp)
+                    .aspectRatio(1f)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(14.dp)) {
+                    Image(
+                        bitmap = qrBitmap,
+                        contentDescription = "Host Pairing QR Code",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Surface(
+                onClick = onCopyCode,
+                shape = RoundedCornerShape(16.dp),
+                color = ObsidianCard,
+                border = BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = hostCode.ifBlank { "------" },
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        color = EmeraldBright,
+                        letterSpacing = 3.sp
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy Code", tint = EmeraldBright, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = onScanClient,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = CoralSecondary, contentColor = Color.White),
+                contentPadding = PaddingValues(vertical = 14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.QrCodeScanner, null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Or Scan Client's QR Code", fontWeight = FontWeight.ExtraBold, fontSize = 14.5.sp)
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MessageDetailModalSheet(
+    message: SmsMessage,
+    onCopyOtp: (String) -> Unit,
+    onCopyFull: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val otpResult = remember(message.body) { OtpExtractor.extractOtp(message.body) }
+    val timeStr = remember(message.receivedAt) {
+        SimpleDateFormat("EEEE, MMM d, yyyy • h:mm:ss a", Locale.getDefault()).format(Date(message.receivedAt))
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = ObsidianSurface,
+        contentColor = TextPrimary,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = message.sender,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary
+            )
+            Text(
+                text = "$timeStr • ${message.clientDeviceName.ifBlank { "Client Phone" }}",
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (otpResult.isOtp) {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = EmeraldSurface,
+                    border = BorderStroke(1.dp, EmeraldPrimary),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("DETECTED OTP", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = EmeraldBright)
+                            Text(
+                                text = otpResult.formattedOtp.ifBlank { otpResult.otp },
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontFamily = FontFamily.Monospace,
+                                color = TextPrimary
+                            )
+                        }
+                        Button(
+                            onClick = { onCopyOtp(otpResult.otp) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Copy OTP", fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = ObsidianCard,
+                border = BorderStroke(1.dp, ObsidianBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = message.body,
+                        fontSize = 15.sp,
+                        color = TextPrimary,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onCopyFull,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ObsidianElevated, contentColor = TextPrimary),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Copy Full SMS", fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = onDelete,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, CrimsonError.copy(alpha = 0.5f)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Delete, null, tint = CrimsonError, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Delete", fontWeight = FontWeight.Bold, color = CrimsonError)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CallHistoryModalSheet(
+    targetCall: CallRecord,
+    allCalls: List<CallRecord>,
+    onCallBack: (String) -> Unit,
+    onCopyNumber: (String) -> Unit,
+    onDeleteSingle: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val matchingCalls = remember(targetCall, allCalls) {
+        allCalls.filter { it.phoneNumber == targetCall.phoneNumber }.take(15)
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = ObsidianSurface,
+        contentColor = TextPrimary,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = targetCall.getDisplayName(),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary
+            )
+            Text(
+                text = "${targetCall.phoneNumber} • ${matchingCalls.size} recent call event(s)",
+                fontSize = 13.sp,
+                color = TextSecondary
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { onCallBack(targetCall.phoneNumber) },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Phone, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Call Back", fontWeight = FontWeight.ExtraBold)
+                }
+
+                OutlinedButton(
+                    onClick = { onCopyNumber(targetCall.phoneNumber) },
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.ContentCopy, null, tint = TextPrimary, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Copy Number", fontWeight = FontWeight.Bold, color = TextPrimary)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            matchingCalls.forEach { entry ->
+                val timeStr = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date(entry.timestamp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = ObsidianCard,
+                    border = BorderStroke(1.dp, ObsidianBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "${entry.callType.displayName} (${entry.formattedDuration()})",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                            Text(text = timeStr, fontSize = 11.5.sp, color = TextSecondary)
+                        }
+                        IconButton(onClick = { onDeleteSingle(entry.callId) }) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = CrimsonError, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}

@@ -260,26 +260,27 @@ fun InAppUpdateDialog(
                     }
                     UpdateDownloadState.DOWNLOADED -> {
                         Surface(
-                            color = Color(0xFFE8F5E9),
-                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF062E22),
+                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = null,
-                                    tint = Color(0xFF2E7D32),
+                                    tint = Color(0xFF34D399),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
                                     text = "Download complete. Ready to install.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF1B5E20)
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF34D399)
                                 )
                             }
                         }

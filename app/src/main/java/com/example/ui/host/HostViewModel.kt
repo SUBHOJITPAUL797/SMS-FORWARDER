@@ -525,11 +525,7 @@ class HostViewModel(
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val app = SmsBridgeApp.instance
-                val stopIntent = android.content.Intent(app, com.example.service.SmsBridgeService::class.java).apply {
-                    action = com.example.service.SmsBridgeService.ACTION_STOP_SERVICE
-                }
-                app.startService(stopIntent)
-                app.preferencesRepository.setServiceActive(false)
+                com.example.util.ServiceStarter.stopServiceSafely(app)
                 authRepository.resetRole()
             } catch (e: Exception) {
                 // Ignore
@@ -542,11 +538,7 @@ class HostViewModel(
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val app = SmsBridgeApp.instance
-                val stopIntent = android.content.Intent(app, com.example.service.SmsBridgeService::class.java).apply {
-                    action = com.example.service.SmsBridgeService.ACTION_STOP_SERVICE
-                }
-                app.startService(stopIntent)
-                app.preferencesRepository.setServiceActive(false)
+                com.example.util.ServiceStarter.stopServiceSafely(app)
                 authRepository.logout()
             } catch (e: Exception) {
                 // Ignore
