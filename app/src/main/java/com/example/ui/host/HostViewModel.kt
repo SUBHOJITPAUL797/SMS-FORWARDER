@@ -80,16 +80,32 @@ class HostViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _removedClientTimestamps = MutableStateFlow<Map<String, Long>>(emptyMap())
+
     /** Typed connected devices — used for the management panel */
-    val connectedDevices: StateFlow<List<ConnectedDevice>> = _hostCode
-        .flatMapLatest { code ->
+    val connectedDevices: StateFlow<List<ConnectedDevice>> = combine(
+        _hostCode.flatMapLatest { code ->
             if (code.isNotEmpty()) {
                 smsRepository.observeConnectedDevices(code)
             } else {
                 flowOf(emptyList())
             }
+        },
+        _removedClientTimestamps
+    ) { devices, removedMap ->
+        if (removedMap.isEmpty()) {
+            devices
+        } else {
+            devices.filterNot { dev ->
+                val uidRemovedAt = if (dev.clientUid.isNotBlank()) removedMap[dev.clientUid] else null
+                val nameRemovedAt = if (dev.clientDeviceName.isNotBlank()) {
+                    removedMap[dev.clientDeviceName.trim().lowercase()]
+                } else null
+                val removedAt = maxOf(uidRemovedAt ?: 0L, nameRemovedAt ?: 0L)
+                removedAt > 0L && dev.lastSeenAt <= removedAt + 2_000L
+            }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val clientDeviceName: StateFlow<String> = connectedDevices
         .map { devices ->
@@ -547,14 +563,32 @@ class HostViewModel(
     }
 
     /**
-     * Disconnects a specific client device from this Host.
-     * The link is marked inactive in Firestore — the client stops forwarding on next sync.
+     * Disconnects and removes a specific client device from this Host.
+     * Immediately removes the device from the UI and deletes the link document(s) in Firestore.
      */
-    fun disconnectClient(clientUid: String) {
+    fun disconnectClient(clientUid: String, clientDeviceName: String = "") {
+        val now = System.currentTimeMillis()
+        val updatedRemovals = _removedClientTimestamps.value.toMutableMap()
+        if (clientUid.isNotBlank()) updatedRemovals[clientUid] = now
+        if (clientDeviceName.isNotBlank()) updatedRemovals[clientDeviceName.trim().lowercase()] = now
+        connectedDevices.value.forEach { dev ->
+            if ((clientUid.isNotBlank() && dev.clientUid == clientUid) ||
+                (clientDeviceName.isNotBlank() && dev.clientDeviceName.equals(clientDeviceName, ignoreCase = true))
+            ) {
+                val cutoff = maxOf(now, dev.lastSeenAt)
+                if (dev.clientUid.isNotBlank()) updatedRemovals[dev.clientUid] = cutoff
+                if (dev.clientDeviceName.isNotBlank()) updatedRemovals[dev.clientDeviceName.trim().lowercase()] = cutoff
+            }
+        }
+        _removedClientTimestamps.value = updatedRemovals
+
+        if (clientDeviceName.isNotBlank() && _selectedDeviceFilter.value.equals(clientDeviceName, ignoreCase = true)) {
+            _selectedDeviceFilter.value = null
+        }
         viewModelScope.launch {
             val code = _hostCode.value
             if (code.isNotEmpty()) {
-                smsRepository.disconnectClient(code, clientUid)
+                smsRepository.disconnectClient(code, clientUid, clientDeviceName)
             }
         }
     }

@@ -535,8 +535,12 @@ class SmsRepository(
         return firestoreSource.observeConnectedDevices(hostCode)
     }
 
-    suspend fun disconnectClient(hostCode: String, clientUid: String): Result<Unit> {
-        return firestoreSource.disconnectClient(hostCode, clientUid)
+    suspend fun disconnectClient(
+        hostCode: String,
+        clientUid: String,
+        clientDeviceName: String = ""
+    ): Result<Unit> {
+        return firestoreSource.disconnectClient(hostCode, clientUid, clientDeviceName)
     }
 
     suspend fun updateClientLastSeen(hostCode: String, clientUid: String): Result<Unit> {

@@ -246,7 +246,10 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                     Log.e(TAG, "Error observing connected clients", error)
                     return@addSnapshotListener
                 }
-                val clients = snapshot?.documents?.mapNotNull { it.data } ?: emptyList()
+                val clients = snapshot?.documents
+                    ?.mapNotNull { it.data }
+                    ?.filter { it["unlinked"] != true }
+                    ?: emptyList()
                 trySend(clients)
             }
         awaitClose { listener.remove() }
@@ -261,7 +264,20 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
                     return@addSnapshotListener
                 }
                 val devices = snapshot?.documents
-                    ?.mapNotNull { doc -> doc.data?.let { ConnectedDevice.fromMap(it) } }
+                    ?.mapNotNull { doc ->
+                        val data = doc.data ?: return@mapNotNull null
+                        if (data["unlinked"] == true) return@mapNotNull null
+                        val enriched = data.toMutableMap()
+                        if ((enriched["clientUid"] as? String).isNullOrBlank()) {
+                            enriched["clientUid"] = doc.id.substringAfter("${hostCode}__", doc.id)
+                        }
+                        ConnectedDevice.fromMap(enriched)
+                    }
+                    ?.sortedWith(compareByDescending<ConnectedDevice> { it.active }.thenByDescending { it.lastSeenAt })
+                    ?.distinctBy { device ->
+                        val nameKey = device.clientDeviceName.trim().lowercase()
+                        if (nameKey.isNotEmpty() && nameKey != "android device") nameKey else device.clientUid
+                    }
                     ?: emptyList()
                 trySend(devices)
             }
@@ -282,17 +298,47 @@ class FirestoreSource(private val firestore: FirebaseFirestore) {
     }
 
     /**
-     * Disconnects a specific client from the host by marking the link as inactive.
+     * Disconnects and removes a specific client from the host by deleting its link document(s) in Firestore.
      */
-    suspend fun disconnectClient(hostCode: String, clientUid: String): Result<Unit> {
+    suspend fun disconnectClient(
+        hostCode: String,
+        clientUid: String,
+        clientDeviceName: String = ""
+    ): Result<Unit> {
         return try {
-            val linkId = "${hostCode}__${clientUid}"
-            firestore.collection(COLLECTION_LINKS).document(linkId)
-                .update(mapOf("active" to false))
+            if (clientUid.isNotBlank()) {
+                val linkId = "${hostCode}__${clientUid}"
+                try {
+                    firestore.collection(COLLECTION_LINKS).document(linkId).delete().await()
+                } catch (_: Exception) {}
+                try {
+                    firestore.collection(COLLECTION_LINKS).document(clientUid).delete().await()
+                } catch (_: Exception) {}
+            }
+
+            // Also clean up any matching link documents for this host + clientUid / clientDeviceName
+            val querySnapshot = firestore.collection(COLLECTION_LINKS)
+                .whereEqualTo("hostUid", hostCode)
+                .get()
                 .await()
+
+            for (doc in querySnapshot.documents) {
+                val docClientUid = doc.getString("clientUid").orEmpty()
+                val docDeviceName = doc.getString("clientDeviceName").orEmpty()
+                val matchesUid = clientUid.isNotBlank() && (docClientUid == clientUid || doc.id == "${hostCode}__${clientUid}" || doc.id == clientUid)
+                val matchesName = clientDeviceName.isNotBlank() && docDeviceName.equals(clientDeviceName, ignoreCase = true)
+                if (matchesUid || matchesName) {
+                    try {
+                        doc.reference.delete().await()
+                    } catch (e: Exception) {
+                        // Fallback if delete rule is restricted: mark unlinked & inactive
+                        doc.reference.update(mapOf("active" to false, "unlinked" to true)).await()
+                    }
+                }
+            }
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Error disconnecting client $clientUid", e)
+            Log.e(TAG, "Error disconnecting client $clientUid ($clientDeviceName)", e)
             Result.failure(e)
         }
     }

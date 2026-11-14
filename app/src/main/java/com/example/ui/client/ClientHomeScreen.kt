@@ -762,7 +762,10 @@ fun ClientHomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
@@ -780,39 +783,40 @@ fun ClientHomeScreen(
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Client Node",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 18.sp,
-                                    color = TextPrimary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(100.dp),
-                                    color = if (isServiceRunning) EmeraldPrimary.copy(alpha = 0.18f) else CrimsonSurface,
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isServiceRunning) EmeraldPrimary.copy(alpha = 0.5f) else CrimsonError.copy(alpha = 0.5f)
-                                    )
-                                ) {
-                                    Text(
-                                        text = if (isServiceRunning) "ACTIVE" else "PAUSED",
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isServiceRunning) EmeraldBright else CrimsonError,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (!linkedHostUid.isNullOrBlank()) "Linked to Host: $linkedHostUid" else "Tap below to link a Host device",
-                                fontSize = 11.5.sp,
-                                color = if (!linkedHostUid.isNullOrBlank()) EmeraldBright else TextSecondary,
+                                text = "Client Node",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 18.sp,
+                                color = TextPrimary,
                                 maxLines = 1,
+                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .background(
+                                            if (isServiceRunning) EmeraldBright else CrimsonError,
+                                            CircleShape
+                                        )
+                                )
+                                val statusText = if (isServiceRunning) "ACTIVE" else "PAUSED"
+                                val hostLabel = if (!linkedHostUid.isNullOrBlank()) "Host: $linkedHostUid" else "Tap below to link Host"
+                                Text(
+                                    text = "$statusText • $hostLabel",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (!linkedHostUid.isNullOrBlank() && isServiceRunning) EmeraldBright else TextSecondary,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 },

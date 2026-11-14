@@ -627,7 +627,10 @@ fun HostHomeScreen(
             } else {
                 TopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
@@ -645,39 +648,38 @@ fun HostHomeScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = "Host Hub",
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 18.sp,
-                                        color = TextPrimary
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(100.dp),
-                                        color = if (isLiveConnected) EmeraldPrimary.copy(alpha = 0.18f) else AmberSurface,
-                                        border = BorderStroke(
-                                            1.dp,
-                                            if (isLiveConnected) EmeraldPrimary.copy(alpha = 0.5f) else AmberWarning.copy(alpha = 0.5f)
-                                        )
-                                    ) {
-                                        Text(
-                                            text = if (isLiveConnected) "LIVE" else "READY",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = if (isLiveConnected) EmeraldBright else AmberWarning,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = clientDeviceName,
-                                    fontSize = 11.5.sp,
-                                    color = if (isLiveConnected) EmeraldBright else TextSecondary,
+                                    text = "Host Hub",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 18.sp,
+                                    color = TextPrimary,
                                     maxLines = 1,
+                                    softWrap = false,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(
+                                                if (isLiveConnected) EmeraldBright else AmberWarning,
+                                                CircleShape
+                                            )
+                                    )
+                                    Text(
+                                        text = if (isLiveConnected) "LIVE • $clientDeviceName" else "READY • $clientDeviceName",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isLiveConnected) EmeraldBright else TextSecondary,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     },
@@ -698,20 +700,22 @@ fun HostHomeScreen(
                                     imageVector = Icons.Default.QrCode,
                                     contentDescription = "Host QR Code",
                                     tint = EmeraldBright,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     text = hostCode.ifBlank { "PAIR" },
-                                    fontSize = 12.sp,
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontFamily = FontFamily.Monospace,
-                                    color = TextPrimary
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
 
                         // Walkie-Talkie Button
                         IconButton(
@@ -995,9 +999,9 @@ fun HostHomeScreen(
                             ).show()
                         }
                     },
-                    onDisconnectClient = { clientUid ->
-                        viewModel.disconnectClient(clientUid)
-                        Toast.makeText(context, "Client device unlinked", Toast.LENGTH_SHORT).show()
+                    onDisconnectClient = { device ->
+                        viewModel.disconnectClient(device.clientUid, device.clientDeviceName)
+                        Toast.makeText(context, "Unlinked ${device.clientDeviceName}", Toast.LENGTH_SHORT).show()
                     },
                     onOpenWalkieTalkie = onOpenWalkieTalkie
                 )
@@ -1250,6 +1254,8 @@ private fun HostInboxTab(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (selected) ObsidianBg else TextSecondary,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
                                 )
                             }
@@ -1257,10 +1263,11 @@ private fun HostInboxTab(
 
                         // Multi-device filter chips if clients exist
                         connectedDevices.forEach { device ->
-                            val selected = selectedDeviceFilter == device.clientUid
+                            val filterKey = device.clientDeviceName.ifBlank { device.clientUid }
+                            val selected = selectedDeviceFilter == filterKey || selectedDeviceFilter == device.clientUid
                             Surface(
                                 onClick = {
-                                    onSelectDeviceFilter(if (selected) null else device.clientUid)
+                                    onSelectDeviceFilter(if (selected) null else filterKey)
                                 },
                                 shape = RoundedCornerShape(100.dp),
                                 color = if (selected) CoralSecondary else ObsidianCard,
@@ -1271,6 +1278,8 @@ private fun HostInboxTab(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (selected) Color.White else TextSecondary,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                                 )
                             }
@@ -1289,7 +1298,14 @@ private fun HostInboxTab(
                                 ) {
                                     Icon(Icons.Default.DoneAll, null, tint = EmeraldBright, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Mark Read", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = EmeraldBright)
+                                    Text(
+                                        text = "Mark Read",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = EmeraldBright,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                             }
                         }
@@ -1837,14 +1853,14 @@ private fun HostDevicesTab(
     onOpenQrSheet: () -> Unit,
     onScanClientQr: () -> Unit,
     onRequestClientLocation: (String) -> Unit,
-    onDisconnectClient: (String) -> Unit,
+    onDisconnectClient: (ConnectedDevice) -> Unit,
     onOpenWalkieTalkie: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // 1. Host Pairing Hero Card
@@ -1905,7 +1921,7 @@ private fun HostDevicesTab(
                     ) {
                         Icon(Icons.Default.QrCode, null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Show QR Code", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                        Text("Show QR Code", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, maxLines = 1, softWrap = false)
                     }
 
                     OutlinedButton(
@@ -1917,7 +1933,7 @@ private fun HostDevicesTab(
                     ) {
                         Icon(Icons.Default.QrCodeScanner, null, tint = CyanTertiary, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Scan Client QR", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+                        Text("Scan Client QR", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -1925,7 +1941,7 @@ private fun HostDevicesTab(
 
         // 2. Connected Client Nodes Header
         Text(
-            text = "Linked Client Phones (${connectedDevices.count { it.active }})",
+            text = "Linked Client Phones (${connectedDevices.size})",
             fontSize = 16.sp,
             fontWeight = FontWeight.ExtraBold,
             color = TextPrimary
@@ -1973,7 +1989,12 @@ private fun HostDevicesTab(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 10.dp)
+                            ) {
                                 Box(
                                     modifier = Modifier
                                         .size(44.dp)
@@ -1988,13 +2009,17 @@ private fun HostDevicesTab(
                                         text = device.clientDeviceName,
                                         fontSize = 16.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = TextPrimary
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     val batStr = device.batteryPercentage?.let { " • Battery $it%" } ?: ""
                                     Text(
                                         text = "Last seen: ${device.lastSeenLabel()}$batStr",
                                         fontSize = 12.sp,
-                                        color = TextSecondary
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -2008,6 +2033,8 @@ private fun HostDevicesTab(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (device.active) EmeraldBright else CrimsonError,
+                                    maxLines = 1,
+                                    softWrap = false,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
@@ -2017,7 +2044,8 @@ private fun HostDevicesTab(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Button(
                                 onClick = { onRequestClientLocation(device.clientUid) },
@@ -2027,7 +2055,7 @@ private fun HostDevicesTab(
                             ) {
                                 Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Locate GPS", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Locate GPS", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
                             }
 
                             if (!device.mapsUrl.isNullOrBlank()) {
@@ -2044,17 +2072,24 @@ private fun HostDevicesTab(
                                     border = BorderStroke(1.dp, CyanTertiary.copy(alpha = 0.5f)),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("Open Map ↗", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = CyanTertiary)
+                                    Text("Open Map ↗", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = CyanTertiary, maxLines = 1, softWrap = false)
                                 }
                             }
 
                             IconButton(
-                                onClick = { onDisconnectClient(device.clientUid) },
+                                onClick = { onDisconnectClient(device) },
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(42.dp)
                                     .background(CrimsonSurface, RoundedCornerShape(12.dp))
+                                    .border(1.dp, CrimsonError.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                    .testTag("unlink_device_${device.clientUid}")
                             ) {
-                                Icon(Icons.Default.DeleteOutline, contentDescription = "Unlink Device", tint = CrimsonError, modifier = Modifier.size(18.dp))
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = "Unlink & Delete Device",
+                                    tint = CrimsonError,
+                                    modifier = Modifier.size(19.dp)
+                                )
                             }
                         }
                     }
