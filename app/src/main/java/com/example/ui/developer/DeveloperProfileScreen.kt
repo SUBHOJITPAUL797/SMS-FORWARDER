@@ -95,6 +95,12 @@ private val PurpleBorder = Color(0xFF232D3F)
 private val DarkText = Color(0xFF0F172A)
 private val SubtitleText = Color(0xFF065F46)
 
+private sealed interface ProfileUpdateState {
+    data object Idle : ProfileUpdateState
+    data object Checking : ProfileUpdateState
+    data class Available(val updateInfo: UpdateChecker.UpdateInfo) : ProfileUpdateState
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeveloperProfileScreen(
@@ -104,9 +110,7 @@ fun DeveloperProfileScreen(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    var isCheckingUpdate by remember { mutableStateOf(false) }
-    var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
-    var showUpdateDialog by remember { mutableStateOf(false) }
+    var updateState by remember { mutableStateOf<ProfileUpdateState>(ProfileUpdateState.Idle) }
     var showTermsDetails by remember { mutableStateOf(false) }
     var showPrivacyDetails by remember { mutableStateOf(false) }
 
@@ -203,21 +207,22 @@ fun DeveloperProfileScreen(
                 // 3. IN-APP UPDATER & VERSION CARD
                 AppUpdaterCard(
                     currentVersion = currentVersion,
-                    isCheckingUpdate = isCheckingUpdate,
+                    isCheckingUpdate = updateState is ProfileUpdateState.Checking,
                     onCheckUpdate = {
-                        isCheckingUpdate = true
-                        scope.launch {
-                            val info = UpdateChecker.checkForUpdates(context)
-                            isCheckingUpdate = false
-                            if (info.hasUpdate) {
-                                updateInfo = info
-                                showUpdateDialog = true
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "✨ You are running the latest version ($currentVersion)!",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                        if (updateState !is ProfileUpdateState.Checking) {
+                            updateState = ProfileUpdateState.Checking
+                            scope.launch {
+                                val info = UpdateChecker.checkForUpdates(context)
+                                if (info.hasUpdate) {
+                                    updateState = ProfileUpdateState.Available(info)
+                                } else {
+                                    updateState = ProfileUpdateState.Idle
+                                    Toast.makeText(
+                                        context,
+                                        "✨ You are running the latest version ($currentVersion)!",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             }
                         }
                     }
@@ -262,10 +267,11 @@ fun DeveloperProfileScreen(
     }
 
     // In-App Update Dialog Trigger
-    if (showUpdateDialog && updateInfo != null) {
+    val availableUpdate = updateState as? ProfileUpdateState.Available
+    if (availableUpdate != null) {
         InAppUpdateDialog(
-            updateInfo = updateInfo!!,
-            onDismiss = { showUpdateDialog = false }
+            updateInfo = availableUpdate.updateInfo,
+            onDismiss = { updateState = ProfileUpdateState.Idle }
         )
     }
 }

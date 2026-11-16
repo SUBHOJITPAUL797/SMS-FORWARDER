@@ -4,6 +4,9 @@ import android.content.Context
 import android.media.MediaRecorder
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -24,8 +27,11 @@ class ConsentRecorder(private val context: Context) {
 
     private var recorder: MediaRecorder? = null
     private var currentOutputFile: File? = null
-    var isRecording: Boolean = false
-        private set
+    private val _isRecordingFlow = MutableStateFlow(false)
+    val isRecordingFlow: StateFlow<Boolean> = _isRecordingFlow.asStateFlow()
+
+    val isRecording: Boolean
+        get() = _isRecordingFlow.value
 
     /**
      * Starts audio recording to an AAC/M4A file in the app storage.
@@ -58,7 +64,7 @@ class ConsentRecorder(private val context: Context) {
 
             recorder = mediaRecorder
             currentOutputFile = file
-            isRecording = true
+            _isRecordingFlow.value = true
             Log.d(TAG, "Recording started: ${file.absolutePath}")
             file
         } catch (e: Exception) {
@@ -74,7 +80,7 @@ class ConsentRecorder(private val context: Context) {
     fun stopRecording(): File? {
         val file = currentOutputFile
         try {
-            if (isRecording) {
+            if (_isRecordingFlow.value) {
                 recorder?.apply {
                     try {
                         stop()
@@ -88,7 +94,7 @@ class ConsentRecorder(private val context: Context) {
             Log.e(TAG, "Error stopping recorder", e)
         } finally {
             recorder = null
-            isRecording = false
+            _isRecordingFlow.value = false
             currentOutputFile = null
         }
         return file

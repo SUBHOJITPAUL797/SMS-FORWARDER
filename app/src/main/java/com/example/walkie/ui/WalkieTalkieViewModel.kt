@@ -16,6 +16,7 @@ import com.example.walkie.model.WtSessionStatus
 import com.example.walkie.repository.WalkieTalkieRepository
 import com.example.walkie.service.WalkieTalkieService
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,8 +61,7 @@ class WalkieTalkieViewModel(
     private val _isFullDuplex = MutableStateFlow(false)
     val isFullDuplex: StateFlow<Boolean> = _isFullDuplex.asStateFlow()
 
-    private val _isRecording = MutableStateFlow(false)
-    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+    val isRecording: StateFlow<Boolean> = consentRecorder.isRecordingFlow
 
     // ── Pairing & Peer Info ────────────────────────────────────
     private val smsRepository: com.example.data.repository.SmsRepository = SmsBridgeApp.instance.smsRepository
@@ -92,6 +92,8 @@ class WalkieTalkieViewModel(
     // Active session observation jobs
     private var sessionObserverJob: Job? = null
     private var incomingCallObserverJob: Job? = null
+    private var reconnectTimeoutJob: Job? = null
+    private var endedResetJob: Job? = null
     private val processedCandidates = mutableSetOf<String>()
 
     init {
@@ -143,12 +145,22 @@ class WalkieTalkieViewModel(
             wtRepository.observeIncomingCallsForHostCode(code, uid).collect { calls ->
                 // If we are IDLE and an incoming call is present
                 if (_callState.value == WtCallState.IDLE && calls.isNotEmpty()) {
+                    endedResetJob?.cancel()
                     val incoming = calls.first()
                     _activeSession.value = incoming
                     _callState.value = WtCallState.RINGING
                     _statusMessage.value = "Incoming Call from ${_peerName.value}…"
                     WalkieTalkieService.showIncomingCallNotification(context, incoming.sessionId, _peerName.value)
                     Log.d(TAG, "Incoming call received: ${incoming.sessionId}")
+                } else if (_callState.value == WtCallState.RINGING) {
+                    val activeId = _activeSession.value?.sessionId
+                    if (activeId == null || calls.none { it.sessionId == activeId }) {
+                        // Caller cancelled before callee answered
+                        WalkieTalkieService.cancelIncomingCallNotification(context)
+                        _activeSession.value = null
+                        _callState.value = WtCallState.IDLE
+                        _statusMessage.value = "Call cancelled"
+                    }
                 }
             }
         }
@@ -165,10 +177,47 @@ class WalkieTalkieViewModel(
         }
     }
 
+    private fun handleIceConnectionState(state: PeerConnection.IceConnectionState) {
+        when (state) {
+            PeerConnection.IceConnectionState.CONNECTED,
+            PeerConnection.IceConnectionState.COMPLETED -> {
+                reconnectTimeoutJob?.cancel()
+                reconnectTimeoutJob = null
+                _callState.value = WtCallState.ACTIVE
+                _statusMessage.value = "Connected • P2P Audio Active"
+            }
+            PeerConnection.IceConnectionState.DISCONNECTED -> {
+                _statusMessage.value = "Connection interrupted • Reconnecting…"
+                if (reconnectTimeoutJob?.isActive != true) {
+                    reconnectTimeoutJob = viewModelScope.launch {
+                        delay(5000L)
+                        if (_callState.value == WtCallState.ACTIVE || _callState.value == WtCallState.CALLING) {
+                            _statusMessage.value = "Connection lost (timed out)"
+                            endCall()
+                        }
+                    }
+                }
+            }
+            PeerConnection.IceConnectionState.FAILED,
+            PeerConnection.IceConnectionState.CLOSED -> {
+                reconnectTimeoutJob?.cancel()
+                reconnectTimeoutJob = null
+                _statusMessage.value = "Connection lost: $state"
+                if (_callState.value == WtCallState.ACTIVE || _callState.value == WtCallState.CALLING) {
+                    endCall()
+                }
+            }
+            else -> {}
+        }
+    }
+
     /**
      * Initiates an outgoing call to the paired device via WebRTC.
      */
     fun initiateCall() {
+        if (_callState.value != WtCallState.IDLE && _callState.value != WtCallState.ENDED) {
+            return
+        }
         if (!_hasMicPermission.value) {
             _statusMessage.value = "Cannot call: Microphone permission not granted."
             return
@@ -179,6 +228,8 @@ class WalkieTalkieViewModel(
             return
         }
 
+        endedResetJob?.cancel()
+        reconnectTimeoutJob?.cancel()
         val sessionId = wtRepository.generateSessionId()
         val uid = _myUid.value
         _callState.value = WtCallState.CALLING
@@ -208,18 +259,7 @@ class WalkieTalkieViewModel(
 
             override fun onConnectionStateChange(state: PeerConnection.IceConnectionState) {
                 viewModelScope.launch {
-                    when (state) {
-                        PeerConnection.IceConnectionState.CONNECTED,
-                        PeerConnection.IceConnectionState.COMPLETED -> {
-                            _callState.value = WtCallState.ACTIVE
-                            _statusMessage.value = "Connected • P2P Audio Active"
-                        }
-                        PeerConnection.IceConnectionState.DISCONNECTED,
-                        PeerConnection.IceConnectionState.FAILED -> {
-                            _statusMessage.value = "Connection lost: $state"
-                        }
-                        else -> {}
-                    }
+                    handleIceConnectionState(state)
                 }
             }
         })
@@ -262,15 +302,20 @@ class WalkieTalkieViewModel(
      * Answers an incoming call.
      */
     fun answerCall(sessionId: String) {
+        if (_callState.value != WtCallState.RINGING && _callState.value != WtCallState.IDLE) {
+            return
+        }
         val session = _activeSession.value ?: return
         if (session.offer.isBlank()) {
             _statusMessage.value = "Cannot answer: Missing SDP offer."
             return
         }
 
+        endedResetJob?.cancel()
+        reconnectTimeoutJob?.cancel()
         WalkieTalkieService.cancelIncomingCallNotification(context)
-        _callState.value = WtCallState.ACTIVE
-        _statusMessage.value = "Answering call…"
+        _callState.value = WtCallState.CALLING
+        _statusMessage.value = "Connecting P2P audio…"
         processedCandidates.clear()
 
         // Acquire audio focus and route to speaker
@@ -294,18 +339,7 @@ class WalkieTalkieViewModel(
 
             override fun onConnectionStateChange(state: PeerConnection.IceConnectionState) {
                 viewModelScope.launch {
-                    when (state) {
-                        PeerConnection.IceConnectionState.CONNECTED,
-                        PeerConnection.IceConnectionState.COMPLETED -> {
-                            _callState.value = WtCallState.ACTIVE
-                            _statusMessage.value = "Connected • P2P Audio Active"
-                        }
-                        PeerConnection.IceConnectionState.DISCONNECTED,
-                        PeerConnection.IceConnectionState.FAILED -> {
-                            _statusMessage.value = "Connection lost: $state"
-                        }
-                        else -> {}
-                    }
+                    handleIceConnectionState(state)
                 }
             }
         })
@@ -331,10 +365,9 @@ class WalkieTalkieViewModel(
         sessionObserverJob = viewModelScope.launch {
             wtRepository.observeSession(sessionId).collect { session ->
                 if (session == null || session.status == WtSessionStatus.ENDED || session.status == WtSessionStatus.DECLINED) {
-                    _statusMessage.value = if (session?.status == WtSessionStatus.DECLINED) "Call declined" else "Call ended"
+                    val endReason = if (session?.status == WtSessionStatus.DECLINED) "Call declined" else "Call ended"
                     cleanUpEngineAndAudio()
-                    _callState.value = WtCallState.IDLE
-                    _activeSession.value = null
+                    transitionToEndedThenIdle(endReason)
                     return@collect
                 }
 
@@ -344,8 +377,7 @@ class WalkieTalkieViewModel(
                     // Initiator reads answer from receiver
                     if (session.status == WtSessionStatus.ACTIVE && session.answer.isNotBlank() && _callState.value == WtCallState.CALLING) {
                         engine?.setRemoteAnswer(session.answer) {
-                            _callState.value = WtCallState.ACTIVE
-                            _statusMessage.value = "Connected • P2P Audio Active"
+                            _statusMessage.value = "SDP connected • Negotiating audio…"
                         }
                     }
 
@@ -398,6 +430,7 @@ class WalkieTalkieViewModel(
      * Toggle Full-Duplex (two-way handsfree) vs Half-Duplex (Push-To-Talk).
      */
     fun toggleFullDuplex() {
+        if (_callState.value != WtCallState.ACTIVE) return
         val next = !_isFullDuplex.value
         _isFullDuplex.value = next
         if (next) {
@@ -414,15 +447,13 @@ class WalkieTalkieViewModel(
      */
     fun toggleRecording() {
         val session = _activeSession.value
-        if (_isRecording.value) {
+        if (consentRecorder.isRecording) {
             consentRecorder.stopRecording()
-            _isRecording.value = false
             _statusMessage.value = "Recording saved locally"
         } else {
             val id = session?.sessionId ?: "local"
             val file = consentRecorder.startRecording(id)
             if (file != null) {
-                _isRecording.value = true
                 _statusMessage.value = "Recording active (${file.name})"
             }
         }
@@ -432,29 +463,44 @@ class WalkieTalkieViewModel(
      * Ends or declines the current call.
      */
     fun endCall() {
+        if (_callState.value == WtCallState.IDLE || _callState.value == WtCallState.ENDED) return
         val session = _activeSession.value
-        viewModelScope.launch {
-            if (session != null) {
+        cleanUpEngineAndAudio()
+        transitionToEndedThenIdle("Call ended")
+        if (session != null) {
+            viewModelScope.launch {
                 wtRepository.endCall(session.sessionId)
                 wtRepository.cleanupSession(session.sessionId)
             }
-            cleanUpEngineAndAudio()
-            _callState.value = WtCallState.IDLE
-            _activeSession.value = null
-            _isTalking.value = false
-            _statusMessage.value = "Call ended"
+        }
+    }
+
+    private fun transitionToEndedThenIdle(reason: String) {
+        _activeSession.value = null
+        _isTalking.value = false
+        _isFullDuplex.value = false
+        _callState.value = WtCallState.ENDED
+        _statusMessage.value = reason
+        endedResetJob?.cancel()
+        endedResetJob = viewModelScope.launch {
+            delay(1000L)
+            if (_callState.value == WtCallState.ENDED) {
+                _callState.value = WtCallState.IDLE
+                _statusMessage.value = "Ready for walkie-talkie communication"
+            }
         }
     }
 
     private fun cleanUpEngineAndAudio() {
+        reconnectTimeoutJob?.cancel()
+        reconnectTimeoutJob = null
         sessionObserverJob?.cancel()
         sessionObserverJob = null
         engine?.dispose()
         engine = null
         audioFocusManager.releaseFocus()
-        if (_isRecording.value) {
+        if (consentRecorder.isRecording) {
             consentRecorder.stopRecording()
-            _isRecording.value = false
         }
         WalkieTalkieService.cancelIncomingCallNotification(context)
         try {
@@ -466,6 +512,7 @@ class WalkieTalkieViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        endedResetJob?.cancel()
         cleanUpEngineAndAudio()
         incomingCallObserverJob?.cancel()
     }

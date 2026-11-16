@@ -194,6 +194,54 @@ object SimUtils {
         }
     }
 
+    data class SelectedSimResult(
+        val simInfo: SimSlotInfo,
+        val slotIndex: Int
+    )
+
+    /**
+     * Canonical Dual-SIM daily quota & rollover selector shared across SMS and Call cellular fallbacks.
+     */
+    fun selectSimForQuota(
+        availableSims: List<SimSlotInfo>,
+        preferredSlot: Int,
+        sim1Count: Int,
+        sim1Limit: Int,
+        sim2Count: Int,
+        sim2Limit: Int,
+        isRolloverEnabled: Boolean
+    ): SelectedSimResult? {
+        if (availableSims.isEmpty()) return null
+        val sim1Info = availableSims.find { it.slotIndex == 0 } ?: availableSims.firstOrNull()
+        val sim2Info = availableSims.find { it.slotIndex == 1 }
+
+        return if (preferredSlot == 2 && sim2Info != null) {
+            when {
+                sim2Count < sim2Limit -> SelectedSimResult(sim2Info, 1)
+                isRolloverEnabled && sim1Info != null && sim1Count < sim1Limit -> {
+                    Log.i(TAG, "SIM 2 quota exhausted ($sim2Count/$sim2Limit). Rolling over to SIM 1 ($sim1Count/$sim1Limit).")
+                    SelectedSimResult(sim1Info, 0)
+                }
+                else -> {
+                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs ($sim1Count/$sim1Limit, $sim2Count/$sim2Limit).")
+                    null
+                }
+            }
+        } else {
+            when {
+                sim1Info != null && sim1Count < sim1Limit -> SelectedSimResult(sim1Info, 0)
+                isRolloverEnabled && sim2Info != null && sim2Count < sim2Limit -> {
+                    Log.i(TAG, "SIM 1 quota exhausted ($sim1Count/$sim1Limit). Rolling over to SIM 2 ($sim2Count/$sim2Limit).")
+                    SelectedSimResult(sim2Info, 1)
+                }
+                else -> {
+                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs ($sim1Count/$sim1Limit, $sim2Count/$sim2Limit).")
+                    null
+                }
+            }
+        }
+    }
+
     /**
      * Compacts the call event into a concise cellular SMS notification for offline fallback.
      */

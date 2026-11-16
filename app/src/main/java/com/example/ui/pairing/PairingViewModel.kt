@@ -46,10 +46,19 @@ class PairingViewModel(
                 clientObserveJob = launch {
                     pairingRepository.observeClientPairingState(code).collect { state ->
                         _clientState.value = state
+                        when (state) {
+                            is PairingState.CodeGenerated -> {
+                                startCountdown(state.expiresAt)
+                            }
+                            is PairingState.Paired,
+                            is PairingState.Error -> {
+                                countdownJob?.cancel()
+                                clientObserveJob?.cancel()
+                            }
+                            else -> {}
+                        }
                     }
                 }
-                // Countdown timer
-                startCountdown()
             } else {
                 _clientState.value = PairingState.Error(
                     result.exceptionOrNull()?.localizedMessage ?: "Failed to generate pairing code."
@@ -58,24 +67,29 @@ class PairingViewModel(
         }
     }
 
-    private fun startCountdown() {
+    private fun startCountdown(expiresAt: Long) {
+        if (expiresAt <= 0L) return
+        countdownJob?.cancel()
         countdownJob = viewModelScope.launch {
-            var seconds = 600L // 10 minutes
-            while (seconds > 0) {
-                delay(1000)
-                seconds--
+            while (true) {
+                val remaining = ((expiresAt - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
                 val current = _clientState.value
-                if (current is PairingState.CodeGenerated) {
-                    _clientState.value = current.copy(remainingSeconds = seconds)
+                if (current !is PairingState.CodeGenerated) {
+                    return@launch
                 }
-            }
-            if (_clientState.value !is PairingState.Paired) {
-                _clientState.value = PairingState.Error("Pairing code has expired. Please tap 'Regenerate Code'.")
+                _clientState.value = current.copy(remainingSeconds = remaining)
+                if (remaining <= 0L) {
+                    _clientState.value = PairingState.Error("Pairing code has expired. Please tap 'Regenerate Code'.")
+                    clientObserveJob?.cancel()
+                    return@launch
+                }
+                delay(1000)
             }
         }
     }
 
     fun pairAsHost(inputCode: String) {
+        if (_hostState.value is HostPairingUiState.Loading) return
         val clean = inputCode.trim().uppercase()
         if (clean.length < 6) {
             _hostState.value = HostPairingUiState.Error("Please enter the complete 6-character code.")
@@ -105,6 +119,8 @@ class PairingViewModel(
             _clientState.value = PairingState.Error("Please enter a valid Host Channel Code.")
             return
         }
+        clientObserveJob?.cancel()
+        countdownJob?.cancel()
         viewModelScope.launch {
             _clientState.value = PairingState.Loading
             val result = pairingRepository.directPairClientToHost(clean)

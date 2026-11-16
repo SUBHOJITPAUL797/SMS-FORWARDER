@@ -92,6 +92,12 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.util.QrCodeUtils
 
+private sealed interface ClientPairingModal {
+    data object None : ClientPairingModal
+    data object QrScanner : ClientPairingModal
+    data object ManualCodeEntry : ClientPairingModal
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientPairingScreen(
@@ -102,10 +108,8 @@ fun ClientPairingScreen(
     val context = LocalContext.current
     val state by viewModel.clientState.collectAsStateWithLifecycle()
 
-    var showQrScanner by remember { mutableStateOf(false) }
-    var showManualCodeDialog by remember { mutableStateOf(false) }
+    var activeModal by remember { mutableStateOf<ClientPairingModal>(ClientPairingModal.None) }
     var manualHostCodeInput by remember { mutableStateOf("") }
-    var isConnectingManual by remember { mutableStateOf(false) }
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -118,7 +122,7 @@ fun ClientPairingScreen(
     ) { isGranted ->
         hasCameraPermission = isGranted
         if (isGranted) {
-            showQrScanner = true
+            activeModal = ClientPairingModal.QrScanner
         } else {
             Toast.makeText(context, "Camera permission is required to scan the Host QR code.", Toast.LENGTH_SHORT).show()
         }
@@ -135,13 +139,13 @@ fun ClientPairingScreen(
     }
 
     // Full-screen CameraX QR Scanner overlay to scan Host's QR code
-    if (showQrScanner) {
+    if (activeModal is ClientPairingModal.QrScanner) {
         QrScannerOverlay(
             instructionText = "Point camera at the Host's QR Code",
             onCodeScanned = { rawValue ->
                 val parsed = QrCodeUtils.parseScannedQr(rawValue)
                 if (parsed != null) {
-                    showQrScanner = false
+                    activeModal = ClientPairingModal.None
                     Toast.makeText(context, "Scanned Host Code: $parsed. Connecting...", Toast.LENGTH_SHORT).show()
                     viewModel.directPairClientToHost(parsed)
                     true
@@ -149,15 +153,15 @@ fun ClientPairingScreen(
                     false
                 }
             },
-            onDismiss = { showQrScanner = false }
+            onDismiss = { activeModal = ClientPairingModal.None }
         )
         return
     }
 
     // Dialog to enter Host Code manually
-    if (showManualCodeDialog) {
+    if (activeModal is ClientPairingModal.ManualCodeEntry) {
         AlertDialog(
-            onDismissRequest = { if (!isConnectingManual) showManualCodeDialog = false },
+            onDismissRequest = { activeModal = ClientPairingModal.None },
             containerColor = ObsidianSurface,
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary,
@@ -194,7 +198,7 @@ fun ClientPairingScreen(
                     onClick = {
                         val clean = manualHostCodeInput.trim().uppercase()
                         if (clean.length >= 4) {
-                            showManualCodeDialog = false
+                            activeModal = ClientPairingModal.None
                             viewModel.directPairClientToHost(clean)
                         } else {
                             Toast.makeText(context, "Please enter a valid Host Code.", Toast.LENGTH_SHORT).show()
@@ -207,7 +211,7 @@ fun ClientPairingScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showManualCodeDialog = false }) {
+                TextButton(onClick = { activeModal = ClientPairingModal.None }) {
                     Text("Cancel", color = TextSecondary)
                 }
             }
@@ -285,7 +289,7 @@ fun ClientPairingScreen(
                 Button(
                     onClick = {
                         if (hasCameraPermission) {
-                            showQrScanner = true
+                            activeModal = ClientPairingModal.QrScanner
                         } else {
                             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                         }
@@ -313,7 +317,7 @@ fun ClientPairingScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedButton(
-                    onClick = { showManualCodeDialog = true },
+                    onClick = { activeModal = ClientPairingModal.ManualCodeEntry },
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(1.dp, ObsidianBorder),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)

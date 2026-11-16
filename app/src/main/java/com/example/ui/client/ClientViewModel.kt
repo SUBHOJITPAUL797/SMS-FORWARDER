@@ -29,8 +29,7 @@ class ClientViewModel(
     private val callRepository: CallRepository = SmsBridgeApp.instance.callRepository
 ) : ViewModel() {
 
-    private val _isServiceActive = MutableStateFlow(true)
-    val isServiceActive: StateFlow<Boolean> = _isServiceActive.asStateFlow()
+    val isServiceActive: StateFlow<Boolean> = SmsBridgeService.isRunningFlow
 
     val linkedHostUid: StateFlow<String?> = authRepository.linkedUidFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -69,12 +68,14 @@ class ClientViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun toggleService(context: Context, shouldStart: Boolean) {
-        _isServiceActive.value = shouldStart
         if (shouldStart) {
-            com.example.util.ServiceStarter.startServiceSafely(
+            val started = com.example.util.ServiceStarter.startServiceSafely(
                 context,
                 com.example.domain.model.UserRole.CLIENT
             )
+            if (started) {
+                SmsBridgeService.markRunningState(true)
+            }
         } else {
             com.example.util.ServiceStarter.stopServiceSafely(context)
         }

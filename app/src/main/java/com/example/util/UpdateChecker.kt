@@ -232,11 +232,29 @@ object UpdateChecker {
         }
     }
 
-    fun installApk(context: Context, apkFile: File) {
-        try {
+    enum class InstallLaunchResult {
+        LAUNCHED,
+        NEEDS_UNKNOWN_SOURCES_PERMISSION,
+        FAILED
+    }
+
+    fun installApk(context: Context, apkFile: File): InstallLaunchResult {
+        return try {
             if (!apkFile.exists()) {
                 Log.e(TAG, "APK file does not exist: ${apkFile.absolutePath}")
-                return
+                return InstallLaunchResult.FAILED
+            }
+
+            // Check if unknown app sources permission needed on Android 8.0+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(settingsIntent)
+                    return InstallLaunchResult.NEEDS_UNKNOWN_SOURCES_PERMISSION
+                }
             }
 
             val authority = "${context.packageName}.provider"
@@ -248,21 +266,11 @@ object UpdateChecker {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
-            // Check if unknown app sources permission needed on Android 8.0+
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (!context.packageManager.canRequestPackageInstalls()) {
-                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(settingsIntent)
-                    return
-                }
-            }
-
             context.startActivity(intent)
+            InstallLaunchResult.LAUNCHED
         } catch (e: Exception) {
             Log.e(TAG, "Error launching package installer", e)
+            InstallLaunchResult.FAILED
         }
     }
 }

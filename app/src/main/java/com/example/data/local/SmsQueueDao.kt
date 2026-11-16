@@ -46,7 +46,7 @@ interface SmsQueueDao {
     @Query("SELECT COUNT(*) FROM sms_queue WHERE status = 'UPLOADED'")
     fun getUploadedCountFlow(): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM sms_queue WHERE status = 'PENDING'")
+    @Query("SELECT COUNT(*) FROM sms_queue WHERE status IN ('PENDING', 'FAILED')")
     fun getPendingCountFlow(): Flow<Int>
 
     @Query("DELETE FROM sms_queue WHERE status = 'UPLOADED' AND receivedAt < :beforeTimestamp")

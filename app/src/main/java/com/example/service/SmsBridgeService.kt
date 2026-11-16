@@ -24,6 +24,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 
@@ -40,13 +43,25 @@ class SmsBridgeService : Service() {
         const val ACTION_STOP_SERVICE = "com.example.service.STOP_SERVICE"
         @Volatile
         var isRunning: Boolean = false
+            private set
+
+        private val _isRunningFlow = MutableStateFlow(false)
+        val isRunningFlow: StateFlow<Boolean> = _isRunningFlow.asStateFlow()
+
+        internal fun markRunningState(running: Boolean) {
+            isRunning = running
+            _isRunningFlow.value = running
+        }
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var wakeLock: PowerManager.WakeLock? = null
+    private var roleMonitorJob: kotlinx.coroutines.Job? = null
     private var hostListenerJob: kotlinx.coroutines.Job? = null
     private var heartbeatJob: kotlinx.coroutines.Job? = null
     private var clientLinkObserverJob: kotlinx.coroutines.Job? = null
+    @Volatile
+    private var isStopping: Boolean = false
 
     // ── Network reconnect listener ────────────────────────────────────────────
     // Flushes any SMS/Call queue items that were buffered while the phone was offline.
@@ -55,7 +70,6 @@ class SmsBridgeService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        isRunning = true
         Log.d(TAG, "SmsBridgeService onCreate()")
 
         // 1. Acquire partial wake lock to keep background processing responsive
@@ -75,9 +89,13 @@ class SmsBridgeService : Service() {
 
         // 3a. Register network reconnect callback — flush offline queue the moment internet returns
         registerNetworkReconnectCallback()
+    }
 
-        // 3. Record service active in preferences and handle role-specific monitoring
-        serviceScope.launch {
+    private fun startRoleMonitoringIfNeeded() {
+        if (isStopping || roleMonitorJob?.isActive == true) return
+
+        // Record service active in preferences and handle role-specific monitoring
+        roleMonitorJob = serviceScope.launch {
             val app = applicationContext as? SmsBridgeApp ?: return@launch
             app.preferencesRepository.setServiceActive(true)
 
@@ -215,34 +233,48 @@ class SmsBridgeService : Service() {
 
                                 // 2. Real-time link monitor — triggers heads-up alert if Host disconnects this device, or responds to location requests
                                 clientLinkObserverJob = launch {
-                                    var lastHandledLocationReqTime = System.currentTimeMillis()
+                                    var lastHandledLocationReqTime = app.preferencesRepository.getLastHandledLocationReqAt()
+                                    var hasObservedLinkDoc = false
                                     app.smsRepository.observeClientLink(linkedHostCode, clientUid).collect { doc ->
+                                        val isDocDeletedAfterSeen = doc == null && hasObservedLinkDoc
+                                        val isExplicitlyInactive = doc != null && (
+                                            (doc["active"] as? Boolean ?: true).not() ||
+                                                (doc["unlinked"] as? Boolean ?: false)
+                                            )
+
                                         if (doc != null) {
-                                            val active = doc["active"] as? Boolean ?: true
-                                            if (!active) {
-                                                Log.i(TAG, "Client device disconnected by host ($linkedHostCode). Alerting user.")
-                                                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                                                val disconnectNotif = NotificationCompat.Builder(this@SmsBridgeService, SmsBridgeFcmService.CHANNEL_ID)
-                                                    .setSmallIcon(R.drawable.ic_notification)
-                                                    .setContentTitle("⚠️ Disconnected by Host")
-                                                    .setContentText("Your device was unlinked by Host ($linkedHostCode). Forwarding paused.")
-                                                    .setStyle(NotificationCompat.BigTextStyle().bigText("Your device was unlinked by Host ($linkedHostCode). SMS and Call forwarding has been paused."))
-                                                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                                                    .setAutoCancel(true)
-                                                    .build()
-                                                notificationManager?.notify(7771, disconnectNotif)
+                                            hasObservedLinkDoc = true
+                                        }
 
-                                                app.preferencesRepository.clearLinkedDevice()
-                                                updateServiceNotification("SMS Bridge: Unlinked", "Disconnected by Host ($linkedHostCode)")
-                                                heartbeatJob?.cancel()
-                                                clientLinkObserverJob?.cancel()
-                                                return@collect
-                                            }
+                                        if (isDocDeletedAfterSeen || isExplicitlyInactive) {
+                                            Log.i(TAG, "Client device disconnected by host ($linkedHostCode). Alerting user.")
+                                            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                                            val disconnectNotif = NotificationCompat.Builder(this@SmsBridgeService, SmsBridgeFcmService.CHANNEL_ID)
+                                                .setSmallIcon(R.drawable.ic_notification)
+                                                .setContentTitle("⚠️ Disconnected by Host")
+                                                .setContentText("Your device was unlinked by Host ($linkedHostCode). Forwarding paused.")
+                                                .setStyle(NotificationCompat.BigTextStyle().bigText("Your device was unlinked by Host ($linkedHostCode). SMS and Call forwarding has been paused."))
+                                                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                                                .setAutoCancel(true)
+                                                .build()
+                                            notificationManager?.notify(7771, disconnectNotif)
 
+                                            app.preferencesRepository.clearLinkedDevice()
+                                            updateServiceNotification("SMS Bridge: Unlinked", "Disconnected by Host ($linkedHostCode)")
+                                            heartbeatJob?.cancel()
+                                            heartbeatJob = null
+                                            clientLinkObserverJob?.cancel()
+                                            clientLinkObserverJob = null
+                                            return@collect
+                                        }
+
+                                        if (doc != null) {
                                             // Remote GPS Location Request trigger via Internet / Firestore
                                             val locationReq = (doc["locationRequestedAt"] as? Number)?.toLong() ?: 0L
-                                            if (locationReq > lastHandledLocationReqTime) {
+                                            val isRecentEnough = (System.currentTimeMillis() - locationReq) < 60 * 60 * 1000L
+                                            if (locationReq > lastHandledLocationReqTime && isRecentEnough) {
                                                 lastHandledLocationReqTime = locationReq
+                                                app.preferencesRepository.setLastHandledLocationReqAt(locationReq)
                                                 Log.i(TAG, "Remote location request received from Host via Firestore. Acquiring GPS fix...")
                                                 launch {
                                                     try {
@@ -386,12 +418,22 @@ class SmsBridgeService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        isRunning = true
         // CRITICAL: Always call startForeground in onStartCommand as well as onCreate
         // so repeated ContextCompat.startForegroundService() calls never trigger ForegroundServiceDidNotStartInTimeException
         ensureForegroundStarted()
 
         if (intent?.action == ACTION_STOP_SERVICE) {
+            isStopping = true
+            markRunningState(false)
+            roleMonitorJob?.cancel()
+            roleMonitorJob = null
+            hostListenerJob?.cancel()
+            hostListenerJob = null
+            heartbeatJob?.cancel()
+            heartbeatJob = null
+            clientLinkObserverJob?.cancel()
+            clientLinkObserverJob = null
+
             serviceScope.launch {
                 val app = applicationContext as? SmsBridgeApp
                 app?.preferencesRepository?.setServiceActive(false)
@@ -407,6 +449,10 @@ class SmsBridgeService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+
+        isStopping = false
+        markRunningState(true)
+        startRoleMonitoringIfNeeded()
         return START_STICKY
     }
 
@@ -469,7 +515,12 @@ class SmsBridgeService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "SmsBridgeService onDestroy()")
-        isRunning = false
+        isStopping = true
+        markRunningState(false)
+        roleMonitorJob?.cancel()
+        hostListenerJob?.cancel()
+        heartbeatJob?.cancel()
+        clientLinkObserverJob?.cancel()
         unregisterCallLogObserver()
         unregisterNetworkCallback()
         wakeLock?.let {

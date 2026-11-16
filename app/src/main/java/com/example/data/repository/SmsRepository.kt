@@ -198,61 +198,30 @@ class SmsRepository(
                 return false
             }
 
-            // Check and reset daily quota for midnight rollovers
-            val (currentSim1Count, currentSim2Count) = preferencesRepository.checkAndResetDailyQuota()
-            val sim1Limit = preferencesRepository.dailySmsLimitSim1Flow.firstOrNull() ?: 100
-            val sim2Limit = preferencesRepository.dailySmsLimitSim2Flow.firstOrNull() ?: 100
-            val preferredSlot = preferencesRepository.preferredSimSlotFlow.firstOrNull() ?: 0 // 0 = Auto/SIM1, 1 = SIM1, 2 = SIM2
-            val isRolloverEnabled = preferencesRepository.isDualSimRolloverEnabledFlow.firstOrNull() ?: true
-
+            val quota = preferencesRepository.getConsistentQuotaSnapshot()
             val availableSims = com.example.util.SimUtils.getAvailableSims(context)
             if (availableSims.isEmpty()) {
                 Log.w(TAG, "No active SIM card found on device to send offline SMS.")
                 return false
             }
 
-            val sim1Info = availableSims.find { it.slotIndex == 0 } ?: availableSims.firstOrNull()
-            val sim2Info = availableSims.find { it.slotIndex == 1 }
+            val selection = com.example.util.SimUtils.selectSimForQuota(
+                availableSims = availableSims,
+                preferredSlot = quota.preferredSlot,
+                sim1Count = quota.sim1Count,
+                sim1Limit = quota.sim1Limit,
+                sim2Count = quota.sim2Count,
+                sim2Limit = quota.sim2Limit,
+                isRolloverEnabled = quota.isRolloverEnabled
+            ) ?: return false
 
-            var targetSim: com.example.util.SimSlotInfo? = null
-            var targetSlotIndex = 0
-
-            if (preferredSlot == 2 && sim2Info != null) {
-                // User prefers SIM 2
-                if (currentSim2Count < sim2Limit) {
-                    targetSim = sim2Info
-                    targetSlotIndex = 1
-                } else if (isRolloverEnabled && sim1Info != null && currentSim1Count < sim1Limit) {
-                    Log.i(TAG, "SIM 2 quota exhausted ($currentSim2Count/$sim2Limit). Rolling over to SIM 1 ($currentSim1Count/$sim1Limit).")
-                    targetSim = sim1Info
-                    targetSlotIndex = 0
-                } else {
-                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs ($currentSim1Count/$sim1Limit, $currentSim2Count/$sim2Limit). Skipping cellular SMS.")
-                    return false
-                }
-            } else {
-                // Default: prefers SIM 1 (or Auto)
-                if (sim1Info != null && currentSim1Count < sim1Limit) {
-                    targetSim = sim1Info
-                    targetSlotIndex = 0
-                } else if (isRolloverEnabled && sim2Info != null && currentSim2Count < sim2Limit) {
-                    Log.i(TAG, "SIM 1 quota exhausted ($currentSim1Count/$sim1Limit). Rolling over to SIM 2 ($currentSim2Count/$sim2Limit).")
-                    targetSim = sim2Info
-                    targetSlotIndex = 1
-                } else {
-                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs ($currentSim1Count/$sim1Limit, $currentSim2Count/$sim2Limit). Skipping cellular SMS.")
-                    return false
-                }
-            }
-
-            if (targetSim == null) {
-                targetSim = availableSims.firstOrNull()
-            }
+            val targetSim = selection.simInfo
+            val targetSlotIndex = selection.slotIndex
 
             val formattedText = com.example.util.SimUtils.formatForwardedSms(sender, body)
             val sendResult = com.example.util.SimUtils.sendCellularSms(
                 context = context,
-                subscriptionId = targetSim?.subscriptionId,
+                subscriptionId = targetSim.subscriptionId,
                 destinationNumber = destinationNumber,
                 messageText = formattedText
             )
@@ -316,10 +285,7 @@ class SmsRepository(
         val pendingList = smsDao.getMessagesByStatus(QueueStatus.PENDING.name) +
                 smsDao.getMessagesByStatus(QueueStatus.FAILED.name)
         for (item in pendingList) {
-            val result = uploadPendingMessage(item.messageId)
-            if (result.isFailure) {
-                smsDao.incrementRetryCount(item.messageId)
-            }
+            uploadPendingMessage(item.messageId)
         }
     }
 

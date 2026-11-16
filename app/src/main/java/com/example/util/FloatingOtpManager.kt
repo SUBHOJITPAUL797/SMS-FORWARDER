@@ -28,9 +28,16 @@ object FloatingOtpManager {
     private const val TAG = "FloatingOtpManager"
     private const val AUTO_DISMISS_DELAY_MS = 15_000L
 
+    private sealed interface OverlayState {
+        data object Idle : OverlayState
+        data class Showing(
+            val view: View,
+            val autoDismissRunnable: Runnable
+        ) : OverlayState
+    }
+
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var currentOverlayView: View? = null
-    private var autoDismissRunnable: Runnable? = null
+    private var overlayState: OverlayState = OverlayState.Idle
 
     /**
      * Checks whether the SYSTEM_ALERT_WINDOW permission is granted.
@@ -194,12 +201,9 @@ object FloatingOtpManager {
                     windowAnimations = android.R.style.Animation_Dialog
                 }
 
-                windowManager.addView(view, params)
-                currentOverlayView = view
-
-                // Auto-dismiss after 15 seconds
                 val runnable = Runnable { dismiss() }
-                autoDismissRunnable = runnable
+                windowManager.addView(view, params)
+                overlayState = OverlayState.Showing(view = view, autoDismissRunnable = runnable)
                 mainHandler.postDelayed(runnable, AUTO_DISMISS_DELAY_MS)
 
                 Log.d(TAG, "Floating OTP overlay successfully shown for sender=$cleanSender, otp=$otp")
@@ -221,22 +225,20 @@ object FloatingOtpManager {
     }
 
     private fun dismissInternal() {
-        autoDismissRunnable?.let { mainHandler.removeCallbacks(it) }
-        autoDismissRunnable = null
+        val current = overlayState as? OverlayState.Showing ?: return
+        overlayState = OverlayState.Idle
+        mainHandler.removeCallbacks(current.autoDismissRunnable)
 
-        currentOverlayView?.let { view ->
-            try {
-                val windowManager = view.context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-                if (view.isAttachedToWindow) {
-                    windowManager?.removeViewImmediate(view)
-                } else {
-                    windowManager?.removeView(view)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Error removing floating overlay view", e)
-            } finally {
-                currentOverlayView = null
+        val view = current.view
+        try {
+            val windowManager = view.context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            if (view.isAttachedToWindow) {
+                windowManager?.removeViewImmediate(view)
+            } else if (view.windowToken != null) {
+                windowManager?.removeView(view)
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error removing floating overlay view", e)
         }
     }
 

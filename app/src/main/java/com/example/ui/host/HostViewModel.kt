@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class HostTab {
@@ -182,9 +183,9 @@ class HostViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val isLiveConnected: StateFlow<Boolean> = combine(connectedClients, rawMessages, rawCalls) { clients, messages, calls ->
-        clients.isNotEmpty() || messages.isNotEmpty() || calls.isNotEmpty()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val isLiveConnected: StateFlow<Boolean> = connectedDevices
+        .map { devices -> devices.any { it.active } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _selectedDeviceFilter = MutableStateFlow<String?>(null) // null means All Devices
     val selectedDeviceFilter: StateFlow<String?> = _selectedDeviceFilter.asStateFlow()
@@ -292,8 +293,6 @@ class HostViewModel(
                             _hasMoreCloudMessages.value = false
                         }
                         _displayLimit.value = currentLimit + 25
-                    } else {
-                        _hasMoreCloudMessages.value = false
                     }
                 }
                 _isLoadingOlderMessages.value = false
@@ -339,8 +338,6 @@ class HostViewModel(
                             _hasMoreCloudCalls.value = false
                         }
                         _callsDisplayLimit.value = currentLimit + 25
-                    } else {
-                        _hasMoreCloudCalls.value = false
                     }
                 }
                 _isLoadingOlderCalls.value = false
@@ -348,43 +345,44 @@ class HostViewModel(
         }
     }
 
-    // Multi-Select and Deletion State
-    private val _selectedMessageIds = MutableStateFlow<Set<String>>(emptySet())
-    val selectedMessageIds: StateFlow<Set<String>> = _selectedMessageIds.asStateFlow()
+    private data class SelectionState(
+        val isActive: Boolean = false,
+        val selectedIds: Set<String> = emptySet()
+    )
 
-    private val _isSelectionMode = MutableStateFlow(false)
-    val isSelectionMode: StateFlow<Boolean> = _isSelectionMode.asStateFlow()
+    // Multi-Select and Deletion State - Messages
+    private val _messageSelection = MutableStateFlow(SelectionState())
+    val selectedMessageIds: StateFlow<Set<String>> = _messageSelection
+        .map { it.selectedIds }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+    val isSelectionMode: StateFlow<Boolean> = _messageSelection
+        .map { it.isActive }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun enterSelectionMode(initialMessageId: String? = null) {
-        _isSelectionMode.value = true
-        if (initialMessageId != null) {
-            _selectedMessageIds.value = setOf(initialMessageId)
-        }
+        _messageSelection.value = SelectionState(
+            isActive = true,
+            selectedIds = initialMessageId?.let(::setOf) ?: emptySet()
+        )
     }
 
     fun exitSelectionMode() {
-        _isSelectionMode.value = false
-        _selectedMessageIds.value = emptySet()
+        _messageSelection.value = SelectionState()
     }
 
     fun toggleSelection(messageId: String) {
-        val current = _selectedMessageIds.value.toMutableSet()
-        if (current.contains(messageId)) {
-            current.remove(messageId)
-        } else {
-            current.add(messageId)
-        }
-        _selectedMessageIds.value = current
-        if (current.isEmpty()) {
-            _isSelectionMode.value = false
-        } else {
-            _isSelectionMode.value = true
+        _messageSelection.update { current ->
+            val nextIds = current.selectedIds.toMutableSet().apply {
+                if (!add(messageId)) remove(messageId)
+            }.toSet()
+            SelectionState(isActive = nextIds.isNotEmpty(), selectedIds = nextIds)
         }
     }
 
     fun selectAll(visibleIds: List<String>) {
-        _selectedMessageIds.value = visibleIds.toSet()
-        _isSelectionMode.value = true
+        val nextIds = visibleIds.toSet()
+        _messageSelection.value = SelectionState(isActive = nextIds.isNotEmpty(), selectedIds = nextIds)
     }
 
     fun deleteSingleMessage(messageId: String, onComplete: () -> Unit = {}) {
@@ -400,7 +398,7 @@ class HostViewModel(
     fun deleteSelectedMessages(onComplete: () -> Unit = {}) {
         viewModelScope.launch {
             val code = _hostCode.value
-            val ids = _selectedMessageIds.value.toList()
+            val ids = _messageSelection.value.selectedIds.toList()
             if (code.isNotEmpty() && ids.isNotEmpty()) {
                 smsRepository.deleteMultipleSms(code, ids)
             }
@@ -410,42 +408,38 @@ class HostViewModel(
     }
 
     // Multi-Select and Deletion State - Calls
-    private val _selectedCallIds = MutableStateFlow<Set<String>>(emptySet())
-    val selectedCallIds: StateFlow<Set<String>> = _selectedCallIds.asStateFlow()
+    private val _callSelection = MutableStateFlow(SelectionState())
+    val selectedCallIds: StateFlow<Set<String>> = _callSelection
+        .map { it.selectedIds }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    private val _isCallSelectionMode = MutableStateFlow(false)
-    val isCallSelectionMode: StateFlow<Boolean> = _isCallSelectionMode.asStateFlow()
+    val isCallSelectionMode: StateFlow<Boolean> = _callSelection
+        .map { it.isActive }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun enterCallSelectionMode(initialCallId: String? = null) {
-        _isCallSelectionMode.value = true
-        if (initialCallId != null) {
-            _selectedCallIds.value = setOf(initialCallId)
-        }
+        _callSelection.value = SelectionState(
+            isActive = true,
+            selectedIds = initialCallId?.let(::setOf) ?: emptySet()
+        )
     }
 
     fun exitCallSelectionMode() {
-        _isCallSelectionMode.value = false
-        _selectedCallIds.value = emptySet()
+        _callSelection.value = SelectionState()
     }
 
     fun toggleCallSelection(callId: String) {
-        val current = _selectedCallIds.value.toMutableSet()
-        if (current.contains(callId)) {
-            current.remove(callId)
-        } else {
-            current.add(callId)
-        }
-        _selectedCallIds.value = current
-        if (current.isEmpty()) {
-            _isCallSelectionMode.value = false
-        } else {
-            _isCallSelectionMode.value = true
+        _callSelection.update { current ->
+            val nextIds = current.selectedIds.toMutableSet().apply {
+                if (!add(callId)) remove(callId)
+            }.toSet()
+            SelectionState(isActive = nextIds.isNotEmpty(), selectedIds = nextIds)
         }
     }
 
     fun selectAllCalls(visibleIds: List<String>) {
-        _selectedCallIds.value = visibleIds.toSet()
-        _isCallSelectionMode.value = true
+        val nextIds = visibleIds.toSet()
+        _callSelection.value = SelectionState(isActive = nextIds.isNotEmpty(), selectedIds = nextIds)
     }
 
     fun deleteSingleCall(callId: String, onComplete: () -> Unit = {}) {
@@ -461,7 +455,7 @@ class HostViewModel(
     fun deleteSelectedCalls(onComplete: () -> Unit = {}) {
         viewModelScope.launch {
             val code = _hostCode.value
-            val ids = _selectedCallIds.value.toList()
+            val ids = _callSelection.value.selectedIds.toList()
             if (code.isNotEmpty() && ids.isNotEmpty()) {
                 callRepository.deleteMultipleCalls(code, ids)
             }
@@ -524,6 +518,8 @@ class HostViewModel(
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
+            _hasMoreCloudMessages.value = true
+            _hasMoreCloudCalls.value = true
             val code = _hostCode.value
             if (code.isNotEmpty()) {
                 callRepository.startHostSync(code, force = true)

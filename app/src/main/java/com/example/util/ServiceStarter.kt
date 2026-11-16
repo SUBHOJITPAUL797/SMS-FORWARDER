@@ -81,7 +81,7 @@ object ServiceStarter {
             val appContext = context.applicationContext
             val serviceIntent = Intent(appContext, SmsBridgeService::class.java)
             appContext.stopService(serviceIntent)
-            SmsBridgeService.isRunning = false
+            SmsBridgeService.markRunningState(false)
             val app = appContext as? SmsBridgeApp
             if (app != null) {
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {

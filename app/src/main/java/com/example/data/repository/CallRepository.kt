@@ -183,53 +183,25 @@ class CallRepository(
                 return false
             }
 
-            // Check and reset daily SMS quota
-            preferencesRepository.checkAndResetDailyQuota()
-
-            val currentSim1Count = preferencesRepository.dailySmsSentCountSim1Flow.firstOrNull() ?: 0
-            val currentSim2Count = preferencesRepository.dailySmsSentCountSim2Flow.firstOrNull() ?: 0
-            val sim1Limit = preferencesRepository.dailySmsLimitSim1Flow.firstOrNull() ?: 100
-            val sim2Limit = preferencesRepository.dailySmsLimitSim2Flow.firstOrNull() ?: 100
-            val preferredSlot = preferencesRepository.preferredSimSlotFlow.firstOrNull() ?: 0
-            val isRolloverEnabled = preferencesRepository.isDualSimRolloverEnabledFlow.firstOrNull() ?: true
-
+            val quota = preferencesRepository.getConsistentQuotaSnapshot()
             val availableSims = com.example.util.SimUtils.getAvailableSims(context)
             if (availableSims.isEmpty()) {
                 Log.w(TAG, "No active SIM card found on device to send offline call alert SMS.")
                 return false
             }
 
-            val sim1Info = availableSims.find { it.slotIndex == 0 } ?: availableSims.firstOrNull()
-            val sim2Info = availableSims.find { it.slotIndex == 1 }
+            val selection = com.example.util.SimUtils.selectSimForQuota(
+                availableSims = availableSims,
+                preferredSlot = quota.preferredSlot,
+                sim1Count = quota.sim1Count,
+                sim1Limit = quota.sim1Limit,
+                sim2Count = quota.sim2Count,
+                sim2Limit = quota.sim2Limit,
+                isRolloverEnabled = quota.isRolloverEnabled
+            ) ?: return false
 
-            var targetSim: com.example.util.SimSlotInfo? = null
-            var targetSlotIndex = 0
-
-            if (preferredSlot == 2 && sim2Info != null) {
-                if (currentSim2Count < sim2Limit) {
-                    targetSim = sim2Info
-                    targetSlotIndex = 1
-                } else if (isRolloverEnabled && sim1Info != null && currentSim1Count < sim1Limit) {
-                    Log.i(TAG, "SIM 2 quota exhausted ($currentSim2Count/$sim2Limit). Rolling over to SIM 1 ($currentSim1Count/$sim1Limit).")
-                    targetSim = sim1Info
-                    targetSlotIndex = 0
-                } else {
-                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs. Skipping cellular call alert.")
-                    return false
-                }
-            } else {
-                if (sim1Info != null && currentSim1Count < sim1Limit) {
-                    targetSim = sim1Info
-                    targetSlotIndex = 0
-                } else if (isRolloverEnabled && sim2Info != null && currentSim2Count < sim2Limit) {
-                    Log.i(TAG, "SIM 1 quota exhausted ($currentSim1Count/$sim1Limit). Rolling over to SIM 2 ($currentSim2Count/$sim2Limit).")
-                    targetSim = sim2Info
-                    targetSlotIndex = 1
-                } else {
-                    Log.w(TAG, "Daily SMS quota exhausted on all SIMs. Skipping cellular call alert.")
-                    return false
-                }
-            }
+            val targetSim = selection.simInfo
+            val targetSlotIndex = selection.slotIndex
 
             val formattedText = com.example.util.SimUtils.formatForwardedCall(
                 caller = phoneNumber,
@@ -240,7 +212,7 @@ class CallRepository(
 
             val sendResult = com.example.util.SimUtils.sendCellularSms(
                 context = context,
-                subscriptionId = targetSim?.subscriptionId,
+                subscriptionId = targetSim.subscriptionId,
                 destinationNumber = destinationNumber,
                 messageText = formattedText
             )
@@ -268,34 +240,14 @@ class CallRepository(
         val fourteenDaysAgo = System.currentTimeMillis() - (14 * 24 * 3600 * 1000L)
         callDao.clearOldUploaded(fourteenDaysAgo)
 
-        val pending = callDao.getCallsByStatus(QueueStatus.PENDING.name)
+        val pending = callDao.getCallsByStatus(QueueStatus.PENDING.name) +
+                callDao.getCallsByStatus(QueueStatus.FAILED.name)
         if (pending.isEmpty()) return 0
 
-        val clientUid = preferencesRepository.getOrCreateDeviceUid()
-        val clientDeviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
         var successCount = 0
-
         for (item in pending) {
-            val record = CallRecord(
-                callId = item.callId,
-                phoneNumber = item.phoneNumber,
-                contactName = item.contactName,
-                callType = CallType.fromString(item.callType),
-                durationSeconds = item.durationSeconds,
-                timestamp = item.timestamp,
-                uploadedAt = System.currentTimeMillis(),
-                clientUid = clientUid,
-                clientDeviceName = clientDeviceName,
-                simSlot = item.simSlot,
-                read = false
-            )
-
-            val res = firestoreSource.uploadCall(hostUid, record)
-            if (res.isSuccess) {
-                callDao.updateStatus(item.callId, QueueStatus.UPLOADED.name)
+            if (uploadPendingCall(item.callId).isSuccess) {
                 successCount++
-            } else {
-                callDao.incrementRetryCount(item.callId)
             }
         }
 
@@ -414,7 +366,7 @@ class CallRepository(
                         )
                         pendingEntities.add(entity)
                         newImported++
-                    } else if (existing.status == QueueStatus.PENDING.name) {
+                    } else if (existing.status == QueueStatus.PENDING.name || existing.status == QueueStatus.FAILED.name) {
                         pendingEntities.add(existing)
                     } else {
                         alreadyExisted++
@@ -422,8 +374,9 @@ class CallRepository(
                 }
             }
 
-            // Also pick up any previous PENDING calls that may have failed before
-            val priorPending = callDao.getCallsByStatus(QueueStatus.PENDING.name)
+            // Also pick up any previous PENDING or FAILED calls that may have failed before
+            val priorPending = callDao.getCallsByStatus(QueueStatus.PENDING.name) +
+                    callDao.getCallsByStatus(QueueStatus.FAILED.name)
             for (p in priorPending) {
                 if (pendingEntities.none { it.callId == p.callId }) {
                     pendingEntities.add(p)
@@ -728,6 +681,7 @@ class CallRepository(
             Result.success(Unit)
         } else {
             callDao.incrementRetryCount(item.callId)
+            callDao.updateStatus(item.callId, QueueStatus.FAILED.name)
             Result.failure(res.exceptionOrNull() ?: Exception("Upload failed"))
         }
     }

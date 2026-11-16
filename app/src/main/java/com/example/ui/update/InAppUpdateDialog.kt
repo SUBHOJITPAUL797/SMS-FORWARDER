@@ -34,9 +34,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,15 +50,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.util.UpdateChecker
 import kotlinx.coroutines.launch
 import java.io.File
 
-enum class UpdateDownloadState {
-    IDLE,
-    DOWNLOADING,
-    DOWNLOADED,
-    ERROR
+private sealed interface UpdateDialogState {
+    data object Idle : UpdateDialogState
+    data class Downloading(
+        val progress: Float,
+        val downloadedMb: Double,
+        val totalMb: Double
+    ) : UpdateDialogState
+    data class Downloaded(val apkFile: File) : UpdateDialogState
+    data class AwaitingInstallPermission(val apkFile: File) : UpdateDialogState
+    data class Error(val message: String) : UpdateDialogState
 }
 
 @Composable
@@ -69,23 +76,55 @@ fun InAppUpdateDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    var downloadState by remember { mutableStateOf(UpdateDownloadState.IDLE) }
-    var progress by remember { mutableFloatStateOf(0f) }
-    var downloadedMb by remember { mutableDoubleStateOf(0.0) }
-    var totalMb by remember { mutableDoubleStateOf(updateInfo.apkSizeMb) }
-    var downloadedApkFile by remember { mutableStateOf<File?>(null) }
-    var errorMessage by remember { mutableStateOf("") }
+    var dialogState by remember { mutableStateOf<UpdateDialogState>(UpdateDialogState.Idle) }
+
+    fun launchApkInstall(apkFile: File) {
+        when (UpdateChecker.installApk(context, apkFile)) {
+            UpdateChecker.InstallLaunchResult.LAUNCHED -> {
+                dialogState = UpdateDialogState.Downloaded(apkFile)
+            }
+            UpdateChecker.InstallLaunchResult.NEEDS_UNKNOWN_SOURCES_PERMISSION -> {
+                dialogState = UpdateDialogState.AwaitingInstallPermission(apkFile)
+            }
+            UpdateChecker.InstallLaunchResult.FAILED -> {
+                dialogState = UpdateDialogState.Error("Unable to launch installer. Please retry.")
+            }
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val awaiting = dialogState as? UpdateDialogState.AwaitingInstallPermission
+                if (awaiting != null) {
+                    val canInstall = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        context.packageManager.canRequestPackageInstalls()
+                    } else true
+                    if (canInstall) {
+                        launchApkInstall(awaiting.apkFile)
+                    } else {
+                        dialogState = UpdateDialogState.Downloaded(awaiting.apkFile)
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val isDownloading = dialogState is UpdateDialogState.Downloading
 
     Dialog(
         onDismissRequest = {
-            if (!updateInfo.isCritical && downloadState != UpdateDownloadState.DOWNLOADING) {
+            if (!updateInfo.isCritical && !isDownloading) {
                 onDismiss()
             }
         },
         properties = DialogProperties(
-            dismissOnBackPress = !updateInfo.isCritical && downloadState != UpdateDownloadState.DOWNLOADING,
-            dismissOnClickOutside = !updateInfo.isCritical && downloadState != UpdateDownloadState.DOWNLOADING
+            dismissOnBackPress = !updateInfo.isCritical && !isDownloading,
+            dismissOnClickOutside = !updateInfo.isCritical && !isDownloading
         )
     ) {
         Card(
@@ -224,8 +263,8 @@ fun InAppUpdateDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Download Progress / Status Bar
-                when (downloadState) {
-                    UpdateDownloadState.DOWNLOADING -> {
+                when (val s = dialogState) {
+                    is UpdateDialogState.Downloading -> {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -241,14 +280,14 @@ fun InAppUpdateDialog(
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    text = "${(progress * 100).toInt()}% (${String.format("%.1f", downloadedMb)} / ${String.format("%.1f", totalMb)} MB)",
+                                    text = "${(s.progress * 100).toInt()}% (${String.format("%.1f", s.downloadedMb)} / ${String.format("%.1f", s.totalMb)} MB)",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
                             LinearProgressIndicator(
-                                progress = { progress },
+                                progress = { s.progress },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(8.dp)
@@ -258,7 +297,8 @@ fun InAppUpdateDialog(
                             )
                         }
                     }
-                    UpdateDownloadState.DOWNLOADED -> {
+                    is UpdateDialogState.Downloaded,
+                    is UpdateDialogState.AwaitingInstallPermission -> {
                         Surface(
                             color = Color(0xFF062E22),
                             border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
@@ -277,7 +317,11 @@ fun InAppUpdateDialog(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = "Download complete. Ready to install.",
+                                    text = if (s is UpdateDialogState.AwaitingInstallPermission) {
+                                        "Allow \"Install unknown apps\" to continue installation."
+                                    } else {
+                                        "Download complete. Ready to install."
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF34D399)
@@ -285,7 +329,7 @@ fun InAppUpdateDialog(
                             }
                         }
                     }
-                    UpdateDownloadState.ERROR -> {
+                    is UpdateDialogState.Error -> {
                         Surface(
                             color = MaterialTheme.colorScheme.errorContainer,
                             shape = RoundedCornerShape(8.dp),
@@ -303,14 +347,14 @@ fun InAppUpdateDialog(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = if (errorMessage.isNotBlank()) errorMessage else "Download failed. Please try again.",
+                                    text = s.message.ifBlank { "Download failed. Please try again." },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
                             }
                         }
                     }
-                    UpdateDownloadState.IDLE -> { /* No progress needed */ }
+                    UpdateDialogState.Idle -> { /* No progress needed */ }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -320,7 +364,7 @@ fun InAppUpdateDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (!updateInfo.isCritical && downloadState != UpdateDownloadState.DOWNLOADING) {
+                    if (!updateInfo.isCritical && !isDownloading) {
                         OutlinedButton(
                             onClick = onDismiss,
                             modifier = Modifier.weight(1f),
@@ -332,30 +376,26 @@ fun InAppUpdateDialog(
 
                     Button(
                         onClick = {
-                            when (downloadState) {
-                                UpdateDownloadState.IDLE, UpdateDownloadState.ERROR -> {
+                            when (val s = dialogState) {
+                                UpdateDialogState.Idle, is UpdateDialogState.Error -> {
                                     if (updateInfo.downloadUrl.endsWith(".apk", ignoreCase = true)) {
-                                        downloadState = UpdateDownloadState.DOWNLOADING
+                                        dialogState = UpdateDialogState.Downloading(0f, 0.0, updateInfo.apkSizeMb)
                                         scope.launch {
                                             val result = UpdateChecker.downloadApk(
                                                 context = context,
                                                 downloadUrl = updateInfo.downloadUrl,
                                                 onProgress = { p, dMb, tMb ->
-                                                    progress = p
-                                                    downloadedMb = dMb
-                                                    totalMb = if (tMb > 0) tMb else totalMb
+                                                    val currentTotal = if (tMb > 0) tMb else updateInfo.apkSizeMb
+                                                    dialogState = UpdateDialogState.Downloading(p, dMb, currentTotal)
                                                 }
                                             )
-                                            if (result.isSuccess) {
-                                                downloadedApkFile = result.getOrNull()
-                                                downloadState = UpdateDownloadState.DOWNLOADED
-                                                // Auto launch installer immediately after download
-                                                downloadedApkFile?.let { file ->
-                                                    UpdateChecker.installApk(context, file)
-                                                }
+                                            val file = result.getOrNull()
+                                            if (result.isSuccess && file != null) {
+                                                launchApkInstall(file)
                                             } else {
-                                                errorMessage = result.exceptionOrNull()?.localizedMessage ?: "Download failed"
-                                                downloadState = UpdateDownloadState.ERROR
+                                                dialogState = UpdateDialogState.Error(
+                                                    result.exceptionOrNull()?.localizedMessage ?: "Download failed"
+                                                )
                                             }
                                         }
                                     } else {
@@ -367,26 +407,28 @@ fun InAppUpdateDialog(
                                         context.startActivity(intent)
                                     }
                                 }
-                                UpdateDownloadState.DOWNLOADED -> {
-                                    downloadedApkFile?.let { file ->
-                                        UpdateChecker.installApk(context, file)
-                                    }
+                                is UpdateDialogState.Downloaded -> {
+                                    launchApkInstall(s.apkFile)
                                 }
-                                UpdateDownloadState.DOWNLOADING -> { /* Do nothing */ }
+                                is UpdateDialogState.AwaitingInstallPermission -> {
+                                    launchApkInstall(s.apkFile)
+                                }
+                                is UpdateDialogState.Downloading -> { /* Do nothing */ }
                             }
                         },
-                        enabled = downloadState != UpdateDownloadState.DOWNLOADING,
+                        enabled = !isDownloading,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (updateInfo.isCritical) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                         )
                     ) {
-                        when (downloadState) {
-                            UpdateDownloadState.DOWNLOADING -> Text("Downloading...")
-                            UpdateDownloadState.DOWNLOADED -> Text("Install Now")
-                            UpdateDownloadState.ERROR -> Text("Retry")
-                            UpdateDownloadState.IDLE -> {
+                        when (dialogState) {
+                            is UpdateDialogState.Downloading -> Text("Downloading...")
+                            is UpdateDialogState.Downloaded -> Text("Install Now")
+                            is UpdateDialogState.AwaitingInstallPermission -> Text("Grant & Install")
+                            is UpdateDialogState.Error -> Text("Retry")
+                            UpdateDialogState.Idle -> {
                                 Icon(
                                     imageVector = Icons.Default.Download,
                                     contentDescription = null,

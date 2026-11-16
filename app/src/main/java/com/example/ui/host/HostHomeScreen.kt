@@ -214,6 +214,18 @@ private enum class InboxFilterMode(val label: String) {
     OTP_ONLY("OTPs Only")
 }
 
+private sealed interface HostModalState {
+    data object None : HostModalState
+    data object HostQrSheet : HostModalState
+    data object PermissionSheet : HostModalState
+    data object QrScanner : HostModalState
+    data object BatchDeleteMessages : HostModalState
+    data object BatchDeleteCalls : HostModalState
+    data class MessageDetail(val message: SmsMessage) : HostModalState
+    data class CallHistory(val call: CallRecord) : HostModalState
+    data class UpdateAvailable(val info: UpdateChecker.UpdateInfo) : HostModalState
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HostHomeScreen(
@@ -257,7 +269,6 @@ fun HostHomeScreen(
     var currentBottomTab by rememberSaveable { mutableStateOf(HostBottomNavTab.INBOX) }
     var inboxFilter by rememberSaveable { mutableStateOf(InboxFilterMode.ALL) }
 
-    var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var isBatteryExempt by remember { mutableStateOf(!AutoStartPermissionHelper.isBatteryOptimized(context)) }
     var hasOverlayPermission by remember { mutableStateOf(FloatingOtpManager.canDrawOverlays(context)) }
@@ -269,15 +280,9 @@ fun HostHomeScreen(
         )
     }
 
-    // Slide-Up Sheets & Dialog States
-    var showHostQrSheet by rememberSaveable { mutableStateOf(false) }
-    var showPermissionSheet by rememberSaveable { mutableStateOf(false) }
-    var showQrScanner by remember { mutableStateOf(false) }
+    // Mutually exclusive modal / slide-up sheet state machine
+    var activeModal by remember { mutableStateOf<HostModalState>(HostModalState.None) }
     var showMoreMenu by remember { mutableStateOf(false) }
-    var showBatchDeleteDialog by remember { mutableStateOf(false) }
-    var showBatchDeleteCallsDialog by remember { mutableStateOf(false) }
-    var messageDetailTarget by remember { mutableStateOf<SmsMessage?>(null) }
-    var callHistoryTarget by remember { mutableStateOf<CallRecord?>(null) }
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -290,7 +295,7 @@ fun HostHomeScreen(
     ) { granted ->
         hasCameraPermission = granted
         if (granted) {
-            showQrScanner = true
+            activeModal = HostModalState.QrScanner
         } else {
             Toast.makeText(context, "Camera permission required to scan QR code", Toast.LENGTH_SHORT).show()
         }
@@ -302,8 +307,17 @@ fun HostHomeScreen(
         hasNotificationPermission = granted
     }
 
-    BackHandler(enabled = isSelectionMode || isCallSelectionMode || currentBottomTab != HostBottomNavTab.INBOX) {
+    val isModalDismissible = when (val m = activeModal) {
+        HostModalState.None -> false
+        is HostModalState.UpdateAvailable -> !m.info.isCritical
+        else -> true
+    }
+
+    BackHandler(
+        enabled = isModalDismissible || isSelectionMode || isCallSelectionMode || currentBottomTab != HostBottomNavTab.INBOX
+    ) {
         when {
+            isModalDismissible -> activeModal = HostModalState.None
             isCallSelectionMode -> viewModel.exitCallSelectionMode()
             isSelectionMode -> viewModel.exitSelectionMode()
             else -> currentBottomTab = HostBottomNavTab.INBOX
@@ -314,8 +328,8 @@ fun HostHomeScreen(
     LaunchedEffect(Unit) {
         ServiceStarter.startServiceSafely(context, UserRole.HOST)
         val info = UpdateChecker.checkForUpdates(context)
-        if (info.hasUpdate) {
-            availableUpdate = info
+        if (info.hasUpdate && activeModal == HostModalState.None) {
+            activeModal = HostModalState.UpdateAvailable(info)
         }
         activity?.intent?.let { intent ->
             if (intent.getStringExtra("selected_tab") == "calls") {
@@ -394,185 +408,189 @@ fun HostHomeScreen(
         )
     }
 
-    // CameraX QR Scanner Overlay
-    if (showQrScanner) {
-        QrScannerOverlay(
-            instructionText = "Point camera at the Client's QR Code",
-            onCodeScanned = { rawValue ->
-                val parsed = QrCodeUtils.parseScannedQr(rawValue)
-                if (parsed != null) {
-                    showQrScanner = false
-                    scope.launch {
-                        val app = context.applicationContext as? SmsBridgeApp
-                        val pairingRepo = app?.pairingRepository ?: SmsBridgeApp.instance.pairingRepository
-                        val res = pairingRepo.pairAsHost(parsed)
-                        if (res.isSuccess) {
-                            Toast.makeText(context, "Paired with ${res.getOrNull()}!", Toast.LENGTH_LONG).show()
-                        } else {
-                            Toast.makeText(context, "Pairing failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+    // ── Modals, Slide-Up Sheets & QR Scanner (Mutually Exclusive State Machine) ──
+    when (val modal = activeModal) {
+        HostModalState.None -> Unit
+
+        HostModalState.QrScanner -> {
+            QrScannerOverlay(
+                instructionText = "Point camera at the Client's QR Code",
+                onCodeScanned = { rawValue ->
+                    val parsed = QrCodeUtils.parseScannedQr(rawValue)
+                    if (parsed != null) {
+                        activeModal = HostModalState.None
+                        scope.launch {
+                            val app = context.applicationContext as? SmsBridgeApp
+                            val pairingRepo = app?.pairingRepository ?: SmsBridgeApp.instance.pairingRepository
+                            val res = pairingRepo.pairAsHost(parsed)
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Paired with ${res.getOrNull()}!", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Pairing failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                            }
                         }
+                        true
+                    } else {
+                        false
                     }
-                    true
-                } else {
-                    false
-                }
-            },
-            onDismiss = { showQrScanner = false }
-        )
-        return
-    }
+                },
+                onDismiss = { activeModal = HostModalState.None }
+            )
+            return
+        }
 
-    // ── Modals & Slide-Up Sheets ──────────────────────────────────────────────
-    if (availableUpdate != null) {
-        InAppUpdateDialog(
-            updateInfo = availableUpdate!!,
-            onDismiss = { availableUpdate = null }
-        )
-    }
+        is HostModalState.UpdateAvailable -> {
+            InAppUpdateDialog(
+                updateInfo = modal.info,
+                onDismiss = { activeModal = HostModalState.None }
+            )
+        }
 
-    if (showPermissionSheet) {
-        PermissionConciergeSheet(
-            title = "Host Permission Concierge",
-            subtitle = "Enable instant OTP notifications & floating overlays",
-            steps = hostPermissionSteps,
-            onGrantAllQuickly = if (!hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                { notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
-            } else null,
-            onDismiss = { showPermissionSheet = false }
-        )
-    }
+        HostModalState.PermissionSheet -> {
+            PermissionConciergeSheet(
+                title = "Host Permission Concierge",
+                subtitle = "Enable instant OTP notifications & floating overlays",
+                steps = hostPermissionSteps,
+                onGrantAllQuickly = if (!hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    { notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                } else null,
+                onDismiss = { activeModal = HostModalState.None }
+            )
+        }
 
-    if (showHostQrSheet) {
-        HostQrModalSheet(
-            hostCode = hostCode,
-            hostPhoneNumber = hostPhoneNumber,
-            onUpdateHostPhoneNumber = { viewModel.updateHostPhoneNumber(it) },
-            onCopyCode = {
-                if (hostCode.isNotEmpty()) {
+        HostModalState.HostQrSheet -> {
+            HostQrModalSheet(
+                hostCode = hostCode,
+                hostPhoneNumber = hostPhoneNumber,
+                onUpdateHostPhoneNumber = { viewModel.updateHostPhoneNumber(it) },
+                onCopyCode = {
+                    if (hostCode.isNotEmpty()) {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Host Code", hostCode))
+                        Toast.makeText(context, "Copied Host Code: $hostCode", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onScanClient = {
+                    if (hasCameraPermission) {
+                        activeModal = HostModalState.QrScanner
+                    } else {
+                        activeModal = HostModalState.None
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                },
+                onDismiss = { activeModal = HostModalState.None }
+            )
+        }
+
+        is HostModalState.MessageDetail -> {
+            val targetMessage = modal.message
+            MessageDetailModalSheet(
+                message = targetMessage,
+                onCopyOtp = { otp ->
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Host Code", hostCode))
-                    Toast.makeText(context, "Copied Host Code: $hostCode", Toast.LENGTH_SHORT).show()
-                }
-            },
-            onScanClient = {
-                showHostQrSheet = false
-                if (hasCameraPermission) {
-                    showQrScanner = true
-                } else {
-                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                }
-            },
-            onDismiss = { showHostQrSheet = false }
-        )
-    }
-
-    if (messageDetailTarget != null) {
-        MessageDetailModalSheet(
-            message = messageDetailTarget!!,
-            onCopyOtp = { otp ->
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("OTP", otp))
-                Toast.makeText(context, "Copied OTP: $otp", Toast.LENGTH_SHORT).show()
-            },
-            onCopyFull = {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("SMS Content", messageDetailTarget!!.body))
-                Toast.makeText(context, "Full message copied", Toast.LENGTH_SHORT).show()
-            },
-            onDelete = {
-                val id = messageDetailTarget!!.messageId
-                messageDetailTarget = null
-                viewModel.deleteSingleMessage(id) {
-                    Toast.makeText(context, "Message deleted", Toast.LENGTH_SHORT).show()
-                }
-            },
-            onDismiss = { messageDetailTarget = null }
-        )
-    }
-
-    if (callHistoryTarget != null) {
-        CallHistoryModalSheet(
-            targetCall = callHistoryTarget!!,
-            allCalls = rawCalls,
-            onCallBack = { number ->
-                try {
-                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${number.trim()}")).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    clipboard.setPrimaryClip(ClipData.newPlainText("OTP", otp))
+                    Toast.makeText(context, "Copied OTP: $otp", Toast.LENGTH_SHORT).show()
+                },
+                onCopyFull = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("SMS Content", targetMessage.body))
+                    Toast.makeText(context, "Full message copied", Toast.LENGTH_SHORT).show()
+                },
+                onDelete = {
+                    val id = targetMessage.messageId
+                    activeModal = HostModalState.None
+                    viewModel.deleteSingleMessage(id) {
+                        Toast.makeText(context, "Message deleted", Toast.LENGTH_SHORT).show()
                     }
-                    context.startActivity(dialIntent)
-                } catch (_: Exception) {}
-            },
-            onCopyNumber = { number ->
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", number))
-                Toast.makeText(context, "Copied: $number", Toast.LENGTH_SHORT).show()
-            },
-            onDeleteSingle = { id ->
-                callHistoryTarget = null
-                viewModel.deleteSingleCall(id) {
-                    Toast.makeText(context, "Call log deleted", Toast.LENGTH_SHORT).show()
-                }
-            },
-            onDismiss = { callHistoryTarget = null }
-        )
-    }
+                },
+                onDismiss = { activeModal = HostModalState.None }
+            )
+        }
 
-    if (showBatchDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showBatchDeleteDialog = false },
-            containerColor = ObsidianSurface,
-            titleContentColor = TextPrimary,
-            textContentColor = TextSecondary,
-            title = { Text("Delete ${selectedMessageIds.size} Messages?", fontWeight = FontWeight.ExtraBold) },
-            text = { Text("This permanently deletes the selected messages from this device and cloud storage.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteSelectedMessages {
-                            Toast.makeText(context, "Deleted selected messages", Toast.LENGTH_SHORT).show()
+        is HostModalState.CallHistory -> {
+            CallHistoryModalSheet(
+                targetCall = modal.call,
+                allCalls = rawCalls,
+                onCallBack = { number ->
+                    try {
+                        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${number.trim()}")).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
                         }
-                        showBatchDeleteDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonError, contentColor = Color.White)
-                ) {
-                    Text("Delete", fontWeight = FontWeight.ExtraBold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBatchDeleteDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
-                }
-            }
-        )
-    }
+                        context.startActivity(dialIntent)
+                    } catch (_: Exception) {}
+                },
+                onCopyNumber = { number ->
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", number))
+                    Toast.makeText(context, "Copied: $number", Toast.LENGTH_SHORT).show()
+                },
+                onDeleteSingle = { id ->
+                    activeModal = HostModalState.None
+                    viewModel.deleteSingleCall(id) {
+                        Toast.makeText(context, "Call log deleted", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onDismiss = { activeModal = HostModalState.None }
+            )
+        }
 
-    if (showBatchDeleteCallsDialog) {
-        AlertDialog(
-            onDismissRequest = { showBatchDeleteCallsDialog = false },
-            containerColor = ObsidianSurface,
-            titleContentColor = TextPrimary,
-            textContentColor = TextSecondary,
-            title = { Text("Delete ${selectedCallIds.size} Call Logs?", fontWeight = FontWeight.ExtraBold) },
-            text = { Text("This permanently deletes the selected call logs from this device and cloud storage.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteSelectedCalls {
-                            Toast.makeText(context, "Deleted selected calls", Toast.LENGTH_SHORT).show()
-                        }
-                        showBatchDeleteCallsDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonError, contentColor = Color.White)
-                ) {
-                    Text("Delete", fontWeight = FontWeight.ExtraBold)
+        HostModalState.BatchDeleteMessages -> {
+            AlertDialog(
+                onDismissRequest = { activeModal = HostModalState.None },
+                containerColor = ObsidianSurface,
+                titleContentColor = TextPrimary,
+                textContentColor = TextSecondary,
+                title = { Text("Delete ${selectedMessageIds.size} Messages?", fontWeight = FontWeight.ExtraBold) },
+                text = { Text("This permanently deletes the selected messages from this device and cloud storage.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteSelectedMessages {
+                                Toast.makeText(context, "Deleted selected messages", Toast.LENGTH_SHORT).show()
+                            }
+                            activeModal = HostModalState.None
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CrimsonError, contentColor = Color.White)
+                    ) {
+                        Text("Delete", fontWeight = FontWeight.ExtraBold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { activeModal = HostModalState.None }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBatchDeleteCallsDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
+            )
+        }
+
+        HostModalState.BatchDeleteCalls -> {
+            AlertDialog(
+                onDismissRequest = { activeModal = HostModalState.None },
+                containerColor = ObsidianSurface,
+                titleContentColor = TextPrimary,
+                textContentColor = TextSecondary,
+                title = { Text("Delete ${selectedCallIds.size} Call Logs?", fontWeight = FontWeight.ExtraBold) },
+                text = { Text("This permanently deletes the selected call logs from this device and cloud storage.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteSelectedCalls {
+                                Toast.makeText(context, "Deleted selected calls", Toast.LENGTH_SHORT).show()
+                            }
+                            activeModal = HostModalState.None
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CrimsonError, contentColor = Color.White)
+                    ) {
+                        Text("Delete", fontWeight = FontWeight.ExtraBold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { activeModal = HostModalState.None }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 
     // ── Main Obsidian Scaffold ────────────────────────────────────────────────
@@ -615,8 +633,11 @@ fun HostHomeScreen(
                         }
                         IconButton(
                             onClick = {
-                                if (isCallSelectionMode) showBatchDeleteCallsDialog = true
-                                else showBatchDeleteDialog = true
+                                activeModal = if (isCallSelectionMode) {
+                                    HostModalState.BatchDeleteCalls
+                                } else {
+                                    HostModalState.BatchDeleteMessages
+                                }
                             }
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete Selected", tint = CrimsonError)
@@ -686,7 +707,7 @@ fun HostHomeScreen(
                     actions = {
                         // Host Code / QR Quick Pill
                         Surface(
-                            onClick = { showHostQrSheet = true },
+                            onClick = { activeModal = HostModalState.HostQrSheet },
                             shape = RoundedCornerShape(100.dp),
                             color = ObsidianCard,
                             border = BorderStroke(1.dp, EmeraldPrimary.copy(alpha = 0.45f)),
@@ -784,7 +805,7 @@ fun HostHomeScreen(
                                     leadingIcon = { Icon(Icons.Default.Shield, null, tint = CoralBright) },
                                     onClick = {
                                         showMoreMenu = false
-                                        showPermissionSheet = true
+                                        activeModal = HostModalState.PermissionSheet
                                     }
                                 )
                                 DropdownMenuItem(
@@ -806,7 +827,7 @@ fun HostHomeScreen(
                                                 val info = UpdateChecker.checkForUpdates(context)
                                                 isCheckingUpdate = false
                                                 if (info.hasUpdate) {
-                                                    availableUpdate = info
+                                                    activeModal = HostModalState.UpdateAvailable(info)
                                                 } else {
                                                     Toast.makeText(context, "Up to date (${info.currentVersion})", Toast.LENGTH_SHORT).show()
                                                 }
@@ -929,8 +950,8 @@ fun HostHomeScreen(
                     isSelectionMode = isSelectionMode,
                     selectedMessageIds = selectedMessageIds,
                     permissionSteps = hostPermissionSteps,
-                    onOpenPermissionSheet = { showPermissionSheet = true },
-                    onOpenQrSheet = { showHostQrSheet = true },
+                    onOpenPermissionSheet = { activeModal = HostModalState.PermissionSheet },
+                    onOpenQrSheet = { activeModal = HostModalState.HostQrSheet },
                     onSearchChange = { viewModel.onSearchQueryChanged(it) },
                     onFilterChange = { inboxFilter = it },
                     onSelectDeviceFilter = { viewModel.setSelectedDeviceFilter(it) },
@@ -942,7 +963,7 @@ fun HostHomeScreen(
                             viewModel.toggleSelection(msg.messageId)
                         } else {
                             if (!msg.read) viewModel.markMessageAsRead(msg.messageId)
-                            messageDetailTarget = msg
+                            activeModal = HostModalState.MessageDetail(msg)
                         }
                     },
                     onMessageLongClick = { msg ->
@@ -970,7 +991,7 @@ fun HostHomeScreen(
                             viewModel.toggleCallSelection(call.callId)
                         } else {
                             if (!call.read) viewModel.markCallAsRead(call.callId)
-                            callHistoryTarget = call
+                            activeModal = HostModalState.CallHistory(call)
                         }
                     },
                     onCallLongClick = { call ->
@@ -982,10 +1003,10 @@ fun HostHomeScreen(
                     context = context,
                     hostCode = hostCode,
                     connectedDevices = connectedDevices,
-                    onOpenQrSheet = { showHostQrSheet = true },
+                    onOpenQrSheet = { activeModal = HostModalState.HostQrSheet },
                     onScanClientQr = {
                         if (hasCameraPermission) {
-                            showQrScanner = true
+                            activeModal = HostModalState.QrScanner
                         } else {
                             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                         }
@@ -1042,7 +1063,7 @@ fun HostHomeScreen(
                         AutoStartPermissionHelper.openAutoStartSettings(context)
                         viewModel.setAutoStartConfigured(true)
                     },
-                    onOpenPermissionSheet = { showPermissionSheet = true }
+                    onOpenPermissionSheet = { activeModal = HostModalState.PermissionSheet }
                 )
             }
         }

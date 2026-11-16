@@ -49,12 +49,14 @@ object HostNotificationManager {
         // Deduplication: if the exact same message was notified in the last 15 seconds, skip
         val dedupKey = "$cleanMsgId|${cleanSender.trim()}|${cleanBody.trim()}"
         val now = System.currentTimeMillis()
-        val lastSeen = recentNotifications[dedupKey]
-        if (lastSeen != null && (now - lastSeen) < 15_000L) {
-            Log.d(TAG, "Notification skipped (already dispatched within last 15s): $dedupKey")
-            return
+        synchronized(recentNotifications) {
+            val lastSeen = recentNotifications[dedupKey]
+            if (lastSeen != null && (now - lastSeen) < 15_000L) {
+                Log.d(TAG, "Notification skipped (already dispatched within last 15s): $dedupKey")
+                return
+            }
+            recentNotifications[dedupKey] = now
         }
-        recentNotifications[dedupKey] = now
 
         val notifId = (cleanMsgId.hashCode() and 0x3FFFFFFF)
         val otpResult = OtpExtractor.extractOtp(cleanBody)
@@ -242,12 +244,14 @@ object HostNotificationManager {
 
         val dedupKey = "call|$cleanCallId|${callType.name}|${callRecord.timestamp / 4_000L}"
         val now = System.currentTimeMillis()
-        val lastSeen = recentNotifications[dedupKey]
-        if (lastSeen != null && (now - lastSeen) < 15_000L) {
-            Log.d(TAG, "Call notification skipped (already dispatched within last 15s): $dedupKey")
-            return
+        synchronized(recentNotifications) {
+            val lastSeen = recentNotifications[dedupKey]
+            if (lastSeen != null && (now - lastSeen) < 15_000L) {
+                Log.d(TAG, "Call notification skipped (already dispatched within last 15s): $dedupKey")
+                return
+            }
+            recentNotifications[dedupKey] = now
         }
-        recentNotifications[dedupKey] = now
 
         val notifId = (cleanCallId.hashCode() and 0x3FFFFFFF)
         val timeString = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(callRecord.timestamp))

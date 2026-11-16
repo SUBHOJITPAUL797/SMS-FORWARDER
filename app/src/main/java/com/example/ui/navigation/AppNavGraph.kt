@@ -169,7 +169,7 @@ fun AppNavGraph(
                     navController.navigate(Screen.WalkieTalkie.route)
                 },
                 onLoggedOut = {
-                    navController.navigate(Screen.Login.route) {
+                    navController.navigate(Screen.RoleSelect.route) {
                         popUpTo(0) { inclusive = true }
                     }
                 }
@@ -194,7 +194,7 @@ fun AppNavGraph(
                     navController.navigate(Screen.ClientPairing.route)
                 },
                 onLoggedOut = {
-                    navController.navigate(Screen.Login.route) {
+                    navController.navigate(Screen.RoleSelect.route) {
                         popUpTo(0) { inclusive = true }
                     }
                 }

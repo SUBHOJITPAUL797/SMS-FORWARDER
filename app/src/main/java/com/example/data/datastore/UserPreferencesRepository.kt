@@ -6,12 +6,15 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.domain.model.UserRole
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
 
@@ -45,7 +48,10 @@ class UserPreferencesRepository(private val context: Context) {
         val KEY_HOST_PHONE_NUMBER = stringPreferencesKey("host_phone_number")
         val KEY_REMOTE_LOCATION_ENABLED = booleanPreferencesKey("remote_location_enabled")
         val KEY_LOCATION_TRIGGER_KEYWORD = stringPreferencesKey("location_trigger_keyword")
+        val KEY_LAST_HANDLED_LOCATION_REQ_AT = longPreferencesKey("last_handled_location_req_at")
     }
+
+    private val quotaMutex = Mutex()
 
     val isCallForwardingEnabledFlow: Flow<Boolean> = dataStore.data.map { preferences ->
         preferences[KEY_CALL_FORWARDING_ENABLED] ?: true
@@ -282,11 +288,32 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun getLastHandledLocationReqAt(): Long {
+        return dataStore.data.map { preferences ->
+            preferences[KEY_LAST_HANDLED_LOCATION_REQ_AT] ?: 0L
+        }.firstOrNull() ?: 0L
+    }
+
+    suspend fun setLastHandledLocationReqAt(timestamp: Long) {
+        dataStore.edit { preferences ->
+            preferences[KEY_LAST_HANDLED_LOCATION_REQ_AT] = timestamp
+        }
+    }
+
+    data class QuotaSnapshot(
+        val sim1Count: Int,
+        val sim2Count: Int,
+        val sim1Limit: Int,
+        val sim2Limit: Int,
+        val preferredSlot: Int,
+        val isRolloverEnabled: Boolean
+    )
+
     /**
      * Checks if a new day has arrived (after midnight) and automatically resets daily counters.
      * Returns Pair(sim1Count, sim2Count) of current counts after reset check.
      */
-    suspend fun checkAndResetDailyQuota(): Pair<Int, Int> {
+    suspend fun checkAndResetDailyQuota(): Pair<Int, Int> = quotaMutex.withLock {
         val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
         var sim1 = 0
         var sim2 = 0
@@ -303,15 +330,53 @@ class UserPreferencesRepository(private val context: Context) {
                 sim2 = preferences[KEY_DAILY_SMS_SENT_COUNT_SIM2] ?: 0
             }
         }
-        return Pair(sim1, sim2)
+        Pair(sim1, sim2)
+    }
+
+    /**
+     * Atomically resets daily quota on day rollover and returns a consistent snapshot of all quota settings.
+     */
+    suspend fun getConsistentQuotaSnapshot(): QuotaSnapshot = quotaMutex.withLock {
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+        lateinit var snapshot: QuotaSnapshot
+        dataStore.edit { preferences ->
+            val lastReset = preferences[KEY_DAILY_SMS_RESET_DATE] ?: ""
+            val sim1: Int
+            val sim2: Int
+            if (lastReset != todayStr) {
+                preferences[KEY_DAILY_SMS_RESET_DATE] = todayStr
+                preferences[KEY_DAILY_SMS_SENT_COUNT_SIM1] = 0
+                preferences[KEY_DAILY_SMS_SENT_COUNT_SIM2] = 0
+                sim1 = 0
+                sim2 = 0
+            } else {
+                sim1 = preferences[KEY_DAILY_SMS_SENT_COUNT_SIM1] ?: 0
+                sim2 = preferences[KEY_DAILY_SMS_SENT_COUNT_SIM2] ?: 0
+            }
+            snapshot = QuotaSnapshot(
+                sim1Count = sim1,
+                sim2Count = sim2,
+                sim1Limit = preferences[KEY_DAILY_SMS_LIMIT_SIM1] ?: 100,
+                sim2Limit = preferences[KEY_DAILY_SMS_LIMIT_SIM2] ?: 100,
+                preferredSlot = preferences[KEY_PREFERRED_SIM_SLOT] ?: 0,
+                isRolloverEnabled = preferences[KEY_DUAL_SIM_ROLLOVER_ENABLED] ?: true
+            )
+        }
+        snapshot
     }
 
     /**
      * Increments the sent SMS count for the given SIM slot (0 for SIM 1, 1 for SIM 2).
      */
-    suspend fun incrementSmsSentCount(slotIndex: Int, parts: Int = 1) {
-        checkAndResetDailyQuota()
+    suspend fun incrementSmsSentCount(slotIndex: Int, parts: Int = 1) = quotaMutex.withLock {
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
         dataStore.edit { preferences ->
+            val lastReset = preferences[KEY_DAILY_SMS_RESET_DATE] ?: ""
+            if (lastReset != todayStr) {
+                preferences[KEY_DAILY_SMS_RESET_DATE] = todayStr
+                preferences[KEY_DAILY_SMS_SENT_COUNT_SIM1] = 0
+                preferences[KEY_DAILY_SMS_SENT_COUNT_SIM2] = 0
+            }
             if (slotIndex == 0) {
                 val current = preferences[KEY_DAILY_SMS_SENT_COUNT_SIM1] ?: 0
                 preferences[KEY_DAILY_SMS_SENT_COUNT_SIM1] = current + parts
@@ -329,6 +394,7 @@ class UserPreferencesRepository(private val context: Context) {
             preferences.remove(KEY_LINKED_DEVICE_NAME)
             preferences.remove(KEY_USER_EMAIL)
             preferences.remove(KEY_USER_UID)
+            preferences.remove(KEY_LAST_HANDLED_LOCATION_REQ_AT)
             preferences[KEY_SERVICE_ACTIVE] = false
         }
     }

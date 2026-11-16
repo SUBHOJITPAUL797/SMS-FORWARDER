@@ -412,7 +412,7 @@ fun QrScannerOverlay(
     val executor = remember { Executors.newSingleThreadExecutor() }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
-    var scanned by remember { mutableStateOf(false) }
+    val scanGate = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -472,7 +472,7 @@ fun QrScannerOverlay(
                         .build()
 
                     imageAnalysis.setAnalyzer(executor) { imageProxy ->
-                        if (!scanned) {
+                        if (!scanGate.get()) {
                             val plane = imageProxy.planes[0]
                             val buffer = plane.buffer
                             val bytes = ByteArray(buffer.remaining())
@@ -496,13 +496,13 @@ fun QrScannerOverlay(
                                     } catch (_: NotFoundException) {}
                                 }
 
-                                if (decodedText != null && !scanned) {
+                                if (decodedText != null && !scanGate.get()) {
                                     val textFound = decodedText
                                     mainHandler.post {
-                                        if (!scanned) {
+                                        if (scanGate.compareAndSet(false, true)) {
                                             val accepted = onCodeScanned(textFound)
-                                            if (accepted) {
-                                                scanned = true
+                                            if (!accepted) {
+                                                scanGate.set(false)
                                             }
                                         }
                                     }

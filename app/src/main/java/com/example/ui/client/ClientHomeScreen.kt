@@ -181,6 +181,19 @@ private enum class ClientNavTab(val label: String, val icon: ImageVector) {
     TOOLS("Smart Tools", Icons.Default.Tune)
 }
 
+private sealed interface ClientModalState {
+    data object None : ClientModalState
+    data object PermissionSheet : ClientModalState
+    data object HostLinkSheet : ClientModalState
+    data class SyncScopeSheet(val isCallMode: Boolean) : ClientModalState
+    data object DestinationNumberSheet : ClientModalState
+    data object QuotaSettingsSheet : ClientModalState
+    data object LocationKeywordSheet : ClientModalState
+    data class TestGpsResult(val message: String) : ClientModalState
+    data object HostQrScanner : ClientModalState
+    data class UpdateAvailable(val info: UpdateChecker.UpdateInfo) : ClientModalState
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClientHomeScreen(
@@ -216,26 +229,16 @@ fun ClientHomeScreen(
 
     val isRemoteLocationEnabled by viewModel.isRemoteLocationEnabled.collectAsStateWithLifecycle()
     val locationTriggerKeyword by viewModel.locationTriggerKeyword.collectAsStateWithLifecycle()
+    val isServiceRunning by viewModel.isServiceActive.collectAsStateWithLifecycle()
 
     var currentTab by rememberSaveable { mutableStateOf(ClientNavTab.BRIDGE) }
-    var isServiceRunning by remember { mutableStateOf(true) }
+    var hasInitializedService by rememberSaveable { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
 
-    // Bottom sheets & dialogs state
-    var showPermissionSheet by rememberSaveable { mutableStateOf(false) }
-    var showHostLinkSheet by rememberSaveable { mutableStateOf(false) }
-    var showSyncScopeSheet by rememberSaveable { mutableStateOf(false) }
-    var isCallSyncSheetMode by rememberSaveable { mutableStateOf(false) }
-    var showDestinationNumberSheet by rememberSaveable { mutableStateOf(false) }
-    var showQuotaSettingsSheet by rememberSaveable { mutableStateOf(false) }
-    var showLocationKeywordSheet by rememberSaveable { mutableStateOf(false) }
-    var testGpsResultDialog by remember { mutableStateOf<String?>(null) }
-
+    var activeModal by remember { mutableStateOf<ClientModalState>(ClientModalState.None) }
     var selectedSyncScope by remember { mutableStateOf(InboxSyncScope.LAST_7_DAYS) }
     var isSyncingHistory by remember { mutableStateOf(false) }
     var isTestingGps by remember { mutableStateOf(false) }
-
-    var availableUpdate by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
 
     // Live permission states
@@ -276,15 +279,25 @@ fun ClientHomeScreen(
         mutableStateOf(powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true)
     }
 
-    var showHostQrScanner by remember { mutableStateOf(false) }
     var hasCameraPermissionForHost by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         )
     }
 
-    BackHandler(enabled = currentTab != ClientNavTab.BRIDGE) {
-        currentTab = ClientNavTab.BRIDGE
+    val isModalDismissible = when (val m = activeModal) {
+        ClientModalState.None -> false
+        is ClientModalState.SyncScopeSheet -> !isSyncingHistory
+        is ClientModalState.UpdateAvailable -> !m.info.isCritical
+        else -> true
+    }
+
+    BackHandler(enabled = isModalDismissible || currentTab != ClientNavTab.BRIDGE) {
+        if (isModalDismissible) {
+            activeModal = ClientModalState.None
+        } else {
+            currentTab = ClientNavTab.BRIDGE
+        }
     }
 
     // ── Permission Launchers ──────────────────────────────────────────────────
@@ -293,7 +306,7 @@ fun ClientHomeScreen(
     ) { isGranted ->
         hasCameraPermissionForHost = isGranted
         if (isGranted) {
-            showHostQrScanner = true
+            activeModal = ClientModalState.HostQrScanner
         } else {
             Toast.makeText(context, "Camera permission needed to scan Host QR code", Toast.LENGTH_SHORT).show()
         }
@@ -308,7 +321,6 @@ fun ClientHomeScreen(
                 ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED)
         if (hasSmsPermission) {
             viewModel.toggleService(context, true)
-            isServiceRunning = true
             Toast.makeText(context, "SMS Sync Permission Active ✓", Toast.LENGTH_SHORT).show()
         }
     }
@@ -369,7 +381,6 @@ fun ClientHomeScreen(
 
         if (hasSmsPermission) {
             viewModel.toggleService(context, true)
-            isServiceRunning = true
         }
     }
 
@@ -419,15 +430,17 @@ fun ClientHomeScreen(
 
     // Start foreground service safely if permissions are already granted; otherwise open guided permission sheet
     LaunchedEffect(Unit) {
-        if (hasSmsPermission) {
-            viewModel.toggleService(context, true)
-            isServiceRunning = true
-        } else {
-            showPermissionSheet = true
+        if (!hasInitializedService) {
+            hasInitializedService = true
+            if (hasSmsPermission) {
+                viewModel.toggleService(context, true)
+            } else {
+                activeModal = ClientModalState.PermissionSheet
+            }
         }
         val info = UpdateChecker.checkForUpdates(context)
-        if (info.hasUpdate) {
-            availableUpdate = info
+        if (info.hasUpdate && activeModal == ClientModalState.None) {
+            activeModal = ClientModalState.UpdateAvailable(info)
         }
     }
 
@@ -538,221 +551,224 @@ fun ClientHomeScreen(
         )
     }
 
-    // Full-screen CameraX QR Scanner overlay to scan Host's QR code
-    if (showHostQrScanner) {
-        QrScannerOverlay(
-            instructionText = "Point camera at the Host's QR Code",
-            onCodeScanned = { rawValue ->
-                val qrData = QrCodeUtils.parseScannedQrData(rawValue)
-                if (qrData != null) {
-                    showHostQrScanner = false
-                    Toast.makeText(context, "Linking to Host ${qrData.code}...", Toast.LENGTH_SHORT).show()
-                    viewModel.updateLinkedHostCode(qrData.code, qrData.phoneNumber) { success, msg ->
+    // ── Modals, Bottom Sheets & QR Overlay (Mutually Exclusive State Machine) ──
+    when (val modal = activeModal) {
+        ClientModalState.None -> Unit
+
+        ClientModalState.HostQrScanner -> {
+            QrScannerOverlay(
+                instructionText = "Point camera at the Host's QR Code",
+                onCodeScanned = { rawValue ->
+                    val qrData = QrCodeUtils.parseScannedQrData(rawValue)
+                    if (qrData != null) {
+                        activeModal = ClientModalState.None
+                        Toast.makeText(context, "Linking to Host ${qrData.code}...", Toast.LENGTH_SHORT).show()
+                        viewModel.updateLinkedHostCode(qrData.code, qrData.phoneNumber) { success, msg ->
+                            Toast.makeText(
+                                context,
+                                if (success) "Connected to Host (${qrData.code})!" else msg,
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onDismiss = { activeModal = ClientModalState.None }
+            )
+            return
+        }
+
+        is ClientModalState.UpdateAvailable -> {
+            InAppUpdateDialog(
+                updateInfo = modal.info,
+                onDismiss = { activeModal = ClientModalState.None }
+            )
+        }
+
+        ClientModalState.PermissionSheet -> {
+            PermissionConciergeSheet(
+                title = "Client Permission Hub",
+                subtitle = "Grant access below with 1-tap live verification",
+                steps = permissionSteps,
+                onGrantAllQuickly = { requestAllCorePermissions() },
+                onDismiss = { activeModal = ClientModalState.None }
+            )
+        }
+
+        ClientModalState.HostLinkSheet -> {
+            HostLinkModalSheet(
+                currentHostCode = linkedHostUid ?: "",
+                onConnectCode = { code, phone ->
+                    viewModel.updateLinkedHostCode(code, phone) { success, msg ->
                         Toast.makeText(
                             context,
-                            if (success) "Connected to Host (${qrData.code})!" else msg,
+                            if (success) "Connected to Host ($code)!" else msg,
                             Toast.LENGTH_SHORT
                         ).show()
                     }
-                    true
-                } else {
-                    false
-                }
-            },
-            onDismiss = { showHostQrScanner = false }
-        )
-        return
-    }
+                    activeModal = ClientModalState.None
+                },
+                onScanQr = {
+                    if (hasCameraPermissionForHost) {
+                        activeModal = ClientModalState.HostQrScanner
+                    } else {
+                        activeModal = ClientModalState.None
+                        cameraPermissionLauncherForHost.launch(Manifest.permission.CAMERA)
+                    }
+                },
+                onShowMyClientQr = {
+                    activeModal = ClientModalState.None
+                    onOpenClientPairing()
+                },
+                onDismiss = { activeModal = ClientModalState.None }
+            )
+        }
 
-    // ── Modals & Bottom Sheets ────────────────────────────────────────────────
-    if (availableUpdate != null) {
-        InAppUpdateDialog(
-            updateInfo = availableUpdate!!,
-            onDismiss = { availableUpdate = null }
-        )
-    }
-
-    if (showPermissionSheet) {
-        PermissionConciergeSheet(
-            title = "Client Permission Hub",
-            subtitle = "Grant access below with 1-tap live verification",
-            steps = permissionSteps,
-            onGrantAllQuickly = { requestAllCorePermissions() },
-            onDismiss = { showPermissionSheet = false }
-        )
-    }
-
-    if (showHostLinkSheet) {
-        HostLinkModalSheet(
-            currentHostCode = linkedHostUid ?: "",
-            onConnectCode = { code, phone ->
-                viewModel.updateLinkedHostCode(code, phone) { success, msg ->
-                    Toast.makeText(
-                        context,
-                        if (success) "Connected to Host ($code)!" else msg,
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-                showHostLinkSheet = false
-            },
-            onScanQr = {
-                showHostLinkSheet = false
-                if (hasCameraPermissionForHost) {
-                    showHostQrScanner = true
-                } else {
-                    cameraPermissionLauncherForHost.launch(Manifest.permission.CAMERA)
-                }
-            },
-            onShowMyClientQr = {
-                showHostLinkSheet = false
-                onOpenClientPairing()
-            },
-            onDismiss = { showHostLinkSheet = false }
-        )
-    }
-
-    if (showSyncScopeSheet) {
-        HistoryImportModalSheet(
-            isCallMode = isCallSyncSheetMode,
-            selectedScope = selectedSyncScope,
-            isSyncing = isSyncingHistory,
-            onSelectScope = { selectedSyncScope = it },
-            onStartSync = {
-                isSyncingHistory = true
-                if (isCallSyncSheetMode) {
-                    viewModel.syncRealCallLog(selectedSyncScope) { result, success ->
-                        isSyncingHistory = false
-                        showSyncScopeSheet = false
-                        if (success && result != null) {
-                            Toast.makeText(
-                                context,
-                                "Call Log Synced: ${result.newImported} newly queued (${result.totalFound} scanned)",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            Toast.makeText(context, "Grant Call Log permission first", Toast.LENGTH_SHORT).show()
+        is ClientModalState.SyncScopeSheet -> {
+            HistoryImportModalSheet(
+                isCallMode = modal.isCallMode,
+                selectedScope = selectedSyncScope,
+                isSyncing = isSyncingHistory,
+                onSelectScope = { selectedSyncScope = it },
+                onStartSync = {
+                    isSyncingHistory = true
+                    if (modal.isCallMode) {
+                        viewModel.syncRealCallLog(selectedSyncScope) { result, success ->
+                            isSyncingHistory = false
+                            activeModal = ClientModalState.None
+                            if (success && result != null) {
+                                Toast.makeText(
+                                    context,
+                                    "Call Log Synced: ${result.newImported} newly queued (${result.totalFound} scanned)",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(context, "Grant Call Log permission first", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        viewModel.syncRealInbox(selectedSyncScope) { result, success ->
+                            isSyncingHistory = false
+                            activeModal = ClientModalState.None
+                            if (success && result != null) {
+                                Toast.makeText(
+                                    context,
+                                    "SMS Inbox Synced: ${result.newImported} newly queued (${result.totalFound} scanned)",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                Toast.makeText(context, "Grant SMS permission first", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
-                } else {
-                    viewModel.syncRealInbox(selectedSyncScope) { result, success ->
-                        isSyncingHistory = false
-                        showSyncScopeSheet = false
-                        if (success && result != null) {
-                            Toast.makeText(
-                                context,
-                                "SMS Inbox Synced: ${result.newImported} newly queued (${result.totalFound} scanned)",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            Toast.makeText(context, "Grant SMS permission first", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { if (!isSyncingHistory) activeModal = ClientModalState.None }
+            )
+        }
+
+        ClientModalState.DestinationNumberSheet -> {
+            DestinationNumberModalSheet(
+                initialNumber = fallbackDestinationNumber,
+                onSave = { cleanNum ->
+                    viewModel.setFallbackDestinationNumber(cleanNum)
+                    activeModal = ClientModalState.None
+                    Toast.makeText(context, "Fallback number saved!", Toast.LENGTH_SHORT).show()
+                    if (!hasSendSmsPermission) {
+                        sendSmsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                    }
+                },
+                onDismiss = { activeModal = ClientModalState.None }
+            )
+        }
+
+        ClientModalState.QuotaSettingsSheet -> {
+            SimQuotaModalSheet(
+                limit1 = dailySmsLimitSim1,
+                limit2 = dailySmsLimitSim2,
+                rollover = isDualSimRolloverEnabled,
+                onSave = { l1, l2, roll ->
+                    viewModel.setDailySmsLimitSim1(l1)
+                    viewModel.setDailySmsLimitSim2(l2)
+                    viewModel.setDualSimRolloverEnabled(roll)
+                    activeModal = ClientModalState.None
+                    Toast.makeText(context, "SIM Quotas & Rollover saved!", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { activeModal = ClientModalState.None }
+            )
+        }
+
+        ClientModalState.LocationKeywordSheet -> {
+            LocationKeywordModalSheet(
+                initialKeyword = locationTriggerKeyword,
+                onSave = { kw ->
+                    viewModel.setLocationTriggerKeyword(kw)
+                    activeModal = ClientModalState.None
+                    Toast.makeText(context, "Trigger keyword set to $kw", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { activeModal = ClientModalState.None }
+            )
+        }
+
+        is ClientModalState.TestGpsResult -> {
+            val dialogMessage = modal.message
+            val isSuccess = dialogMessage.startsWith("✅")
+            val googleMapsUrl = if (dialogMessage.contains("https://maps.google.com")) {
+                dialogMessage.substringAfter("Map Link:\n").trim()
+            } else null
+
+            AlertDialog(
+                onDismissRequest = { activeModal = ClientModalState.None },
+                containerColor = ObsidianSurface,
+                titleContentColor = TextPrimary,
+                textContentColor = TextSecondary,
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = if (isSuccess) EmeraldBright else CrimsonError
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isSuccess) "Live GPS Fix Acquired" else "GPS Diagnostic Report",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                text = { Text(text = dialogMessage, fontSize = 13.sp, color = TextPrimary) },
+                confirmButton = {
+                    if (googleMapsUrl != null) {
+                        Button(
+                            onClick = {
+                                try {
+                                    val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(googleMapsUrl)).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(mapIntent)
+                                } catch (_: Exception) {}
+                                activeModal = ClientModalState.None
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg)
+                        ) {
+                            Text("Open Google Maps ↗", fontWeight = FontWeight.ExtraBold)
+                        }
+                    } else {
+                        Button(onClick = { activeModal = ClientModalState.None }) {
+                            Text("OK")
+                        }
+                    }
+                },
+                dismissButton = {
+                    if (googleMapsUrl != null) {
+                        TextButton(onClick = { activeModal = ClientModalState.None }) {
+                            Text("Close", color = TextSecondary)
                         }
                     }
                 }
-            },
-            onDismiss = { if (!isSyncingHistory) showSyncScopeSheet = false }
-        )
-    }
-
-    if (showDestinationNumberSheet) {
-        DestinationNumberModalSheet(
-            initialNumber = fallbackDestinationNumber,
-            onSave = { cleanNum ->
-                viewModel.setFallbackDestinationNumber(cleanNum)
-                showDestinationNumberSheet = false
-                Toast.makeText(context, "Fallback number saved!", Toast.LENGTH_SHORT).show()
-                if (!hasSendSmsPermission) {
-                    sendSmsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
-                }
-            },
-            onDismiss = { showDestinationNumberSheet = false }
-        )
-    }
-
-    if (showQuotaSettingsSheet) {
-        SimQuotaModalSheet(
-            limit1 = dailySmsLimitSim1,
-            limit2 = dailySmsLimitSim2,
-            rollover = isDualSimRolloverEnabled,
-            onSave = { l1, l2, roll ->
-                viewModel.setDailySmsLimitSim1(l1)
-                viewModel.setDailySmsLimitSim2(l2)
-                viewModel.setDualSimRolloverEnabled(roll)
-                showQuotaSettingsSheet = false
-                Toast.makeText(context, "SIM Quotas & Rollover saved!", Toast.LENGTH_SHORT).show()
-            },
-            onDismiss = { showQuotaSettingsSheet = false }
-        )
-    }
-
-    if (showLocationKeywordSheet) {
-        LocationKeywordModalSheet(
-            initialKeyword = locationTriggerKeyword,
-            onSave = { kw ->
-                viewModel.setLocationTriggerKeyword(kw)
-                showLocationKeywordSheet = false
-                Toast.makeText(context, "Trigger keyword set to $kw", Toast.LENGTH_SHORT).show()
-            },
-            onDismiss = { showLocationKeywordSheet = false }
-        )
-    }
-
-    if (testGpsResultDialog != null) {
-        val dialogMessage = testGpsResultDialog!!
-        val isSuccess = dialogMessage.startsWith("✅")
-        val googleMapsUrl = if (dialogMessage.contains("https://maps.google.com")) {
-            dialogMessage.substringAfter("Map Link:\n").trim()
-        } else null
-
-        AlertDialog(
-            onDismissRequest = { testGpsResultDialog = null },
-            containerColor = ObsidianSurface,
-            titleContentColor = TextPrimary,
-            textContentColor = TextSecondary,
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = if (isSuccess) EmeraldBright else CrimsonError
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (isSuccess) "Live GPS Fix Acquired" else "GPS Diagnostic Report",
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            text = { Text(text = dialogMessage, fontSize = 13.sp, color = TextPrimary) },
-            confirmButton = {
-                if (googleMapsUrl != null) {
-                    Button(
-                        onClick = {
-                            try {
-                                val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(googleMapsUrl)).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                context.startActivity(mapIntent)
-                            } catch (_: Exception) {}
-                            testGpsResultDialog = null
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = ObsidianBg)
-                    ) {
-                        Text("Open Google Maps ↗", fontWeight = FontWeight.ExtraBold)
-                    }
-                } else {
-                    Button(onClick = { testGpsResultDialog = null }) {
-                        Text("OK")
-                    }
-                }
-            },
-            dismissButton = {
-                if (googleMapsUrl != null) {
-                    TextButton(onClick = { testGpsResultDialog = null }) {
-                        Text("Close", color = TextSecondary)
-                    }
-                }
-            }
-        )
+            )
+        }
     }
 
     // ── Main Obsidian Scaffold with Bottom Navigation ─────────────────────────
@@ -882,7 +898,7 @@ fun ClientHomeScreen(
                                 leadingIcon = { Icon(Icons.Default.Shield, null, tint = EmeraldBright) },
                                 onClick = {
                                     showMoreMenu = false
-                                    showPermissionSheet = true
+                                    activeModal = ClientModalState.PermissionSheet
                                 }
                             )
                             DropdownMenuItem(
@@ -904,7 +920,7 @@ fun ClientHomeScreen(
                                             val info = UpdateChecker.checkForUpdates(context)
                                             isCheckingUpdate = false
                                             if (info.hasUpdate) {
-                                                availableUpdate = info
+                                                activeModal = ClientModalState.UpdateAvailable(info)
                                             } else {
                                                 Toast.makeText(context, "You are on the latest version (${info.currentVersion})", Toast.LENGTH_SHORT).show()
                                             }
@@ -990,30 +1006,27 @@ fun ClientHomeScreen(
                     uploadedCount = uploadedCount,
                     uploadedCallsCount = uploadedCallsCount,
                     pendingCount = pendingCount + pendingCallsCount,
-                    onOpenPermissionSheet = { showPermissionSheet = true },
+                    onOpenPermissionSheet = { activeModal = ClientModalState.PermissionSheet },
                     onToggleService = { enabled ->
-                        isServiceRunning = enabled
                         viewModel.toggleService(context, enabled)
                     },
                     onScanHostQr = {
                         if (hasCameraPermissionForHost) {
-                            showHostQrScanner = true
+                            activeModal = ClientModalState.HostQrScanner
                         } else {
                             cameraPermissionLauncherForHost.launch(Manifest.permission.CAMERA)
                         }
                     },
-                    onOpenHostCodeSheet = { showHostLinkSheet = true },
+                    onOpenHostCodeSheet = { activeModal = ClientModalState.HostLinkSheet },
                     onFlushPending = {
                         viewModel.syncAllPending()
                         Toast.makeText(context, "Syncing queued messages & calls...", Toast.LENGTH_SHORT).show()
                     },
                     onOpenImportSms = {
-                        isCallSyncSheetMode = false
-                        showSyncScopeSheet = true
+                        activeModal = ClientModalState.SyncScopeSheet(isCallMode = false)
                     },
                     onOpenImportCalls = {
-                        isCallSyncSheetMode = true
-                        showSyncScopeSheet = true
+                        activeModal = ClientModalState.SyncScopeSheet(isCallMode = true)
                     },
                     onOpenWalkieTalkie = onOpenWalkieTalkie
                 )
@@ -1024,12 +1037,10 @@ fun ClientHomeScreen(
                     uploadedCount = uploadedCount,
                     pendingCount = pendingCount,
                     onOpenImportSms = {
-                        isCallSyncSheetMode = false
-                        showSyncScopeSheet = true
+                        activeModal = ClientModalState.SyncScopeSheet(isCallMode = false)
                     },
                     onOpenImportCalls = {
-                        isCallSyncSheetMode = true
-                        showSyncScopeSheet = true
+                        activeModal = ClientModalState.SyncScopeSheet(isCallMode = true)
                     },
                     onRetryPending = {
                         viewModel.syncAllPending()
@@ -1064,9 +1075,9 @@ fun ClientHomeScreen(
                             viewModel.setOfflineSmsFallbackEnabled(enabled)
                         }
                     },
-                    onOpenNumberSheet = { showDestinationNumberSheet = true },
+                    onOpenNumberSheet = { activeModal = ClientModalState.DestinationNumberSheet },
                     onSelectSimSlot = { viewModel.setPreferredSimSlot(it) },
-                    onOpenQuotaSheet = { showQuotaSettingsSheet = true },
+                    onOpenQuotaSheet = { activeModal = ClientModalState.QuotaSettingsSheet },
                     onSendTestFallbackSms = {
                         viewModel.sendTestFallbackSms { _, msg ->
                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
@@ -1097,7 +1108,7 @@ fun ClientHomeScreen(
                             viewModel.setRemoteLocationEnabled(enabled)
                         }
                     },
-                    onOpenLocationKeywordSheet = { showLocationKeywordSheet = true },
+                    onOpenLocationKeywordSheet = { activeModal = ClientModalState.LocationKeywordSheet },
                     onTestGpsFix = {
                         if (!hasLocationPermission) {
                             locationPermissionLauncher.launch(
@@ -1112,15 +1123,17 @@ fun ClientHomeScreen(
                                 val loc = LocationUtils.getCurrentLocation(context)
                                 val bat = LocationUtils.getBatteryInfo(context)
                                 isTestingGps = false
-                                testGpsResultDialog = if (loc != null) {
-                                    "✅ Live GPS Fix Acquired!\n\n" +
-                                        "Coordinates: ${loc.latitude}, ${loc.longitude}\n" +
-                                        "Accuracy: ±${loc.accuracy.toInt()}m (${loc.provider})\n" +
-                                        "Battery: ${bat.percentage}%\n\n" +
-                                        "Map Link:\n${loc.mapsUrl}"
-                                } else {
-                                    "⚠️ Could not acquire GPS fix.\nEnsure device Location / GPS is switched ON in quick settings."
-                                }
+                                activeModal = ClientModalState.TestGpsResult(
+                                    if (loc != null) {
+                                        "✅ Live GPS Fix Acquired!\n\n" +
+                                            "Coordinates: ${loc.latitude}, ${loc.longitude}\n" +
+                                            "Accuracy: ±${loc.accuracy.toInt()}m (${loc.provider})\n" +
+                                            "Battery: ${bat.percentage}%\n\n" +
+                                            "Map Link:\n${loc.mapsUrl}"
+                                    } else {
+                                        "⚠️ Could not acquire GPS fix.\nEnsure device Location / GPS is switched ON in quick settings."
+                                    }
+                                )
                             }
                         }
                     },
@@ -1133,7 +1146,7 @@ fun ClientHomeScreen(
                         AutoStartPermissionHelper.openAutoStartSettings(context)
                         viewModel.setAutoStartConfigured(true)
                     },
-                    onOpenPermissionSheet = { showPermissionSheet = true }
+                    onOpenPermissionSheet = { activeModal = ClientModalState.PermissionSheet }
                 )
             }
         }
